@@ -342,12 +342,12 @@ export async function init(manager) {
   }
 
   // AUDIO (Howler)
-  footstepSound = new Howl({ src: ['/assets/footstep_wood.mp3'], volume: 0.6 });
-  breathSound = new Howl({ src: ['/assets/breath.mp3'], loop: true, volume: 0.3 });
+  footstepSound = new Howl({ src: ['/assets/footstep_wood.wav'], volume: 0.6 });
+  breathSound = new Howl({ src: ['/assets/breath.wav'], loop: true, volume: 0.3 });
   breathSound.play();
 
   if (visit >= 3) {
-    distantSound = new Howl({ src: ['/assets/distant_drone.mp3'], loop: true, volume: 0.15 });
+    distantSound = new Howl({ src: ['/assets/distant_drone.wav'], loop: true, volume: 0.15 });
     distantSound.play();
   }
 }
@@ -396,8 +396,8 @@ export function update(deltaTime, manager) {
     // Mapeo del próximo sueño según la visita
     let nextDream = 'sea';
     if (state.visit === 1) nextDream = 'dream2'; // Asumiendo que el juego empieza en sea
-    else if (state.visit === 2) nextDream = 'sea'; // Volvemos al inicio para hacer un loop
-    else nextDream = 'dream2'; 
+    else if (state.visit === 2) nextDream = 'dream3'; 
+    else nextDream = 'sea'; 
     
     manager.transitionTo(nextDream);
   }

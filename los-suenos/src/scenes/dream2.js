@@ -157,8 +157,8 @@ export async function init(manager) {
   manager.camera.add(state.rightHand);
 
   // 7. Audio (Howler) - Ignoramos errores 404 si los archivos no existen y usamos buffers genéricos
-  windSound = new Howl({ src: ['/assets/wind.mp3'], loop: true, volume: 0.3 });
-  heartbeatSound = new Howl({ src: ['/assets/heartbeat.mp3'], loop: true, volume: 0 });
+  windSound = new Howl({ src: ['/assets/wind.wav'], loop: true, volume: 0.3 });
+  heartbeatSound = new Howl({ src: ['/assets/heartbeat.wav'], loop: true, volume: 0 });
   windSound.play();
   heartbeatSound.play();
 }

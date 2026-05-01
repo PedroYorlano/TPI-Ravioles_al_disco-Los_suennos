@@ -14,6 +14,7 @@ manager.registerScene('sceneB', () => import('./scenes/sceneB.js'));
 manager.registerScene('sea', () => import('./scenes/seaScene.js'));
 manager.registerScene('hub', () => import('./scenes/hubScene.js'));
 manager.registerScene('dream2', () => import('./scenes/dream2.js'));
+manager.registerScene('dream3', () => import('./scenes/dream3.js'));
 
 // Iniciar con la nueva escena para probar
-manager.transitionTo('sea');
+manager.transitionTo('dream3');
