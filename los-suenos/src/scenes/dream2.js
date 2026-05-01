@@ -261,4 +261,8 @@ export function dispose(manager) {
   }
   if (windSound) windSound.unload();
   if (heartbeatSound) heartbeatSound.unload();
+  
+  if (state.leftHand) manager.camera.remove(state.leftHand);
+  if (state.rightHand) manager.camera.remove(state.rightHand);
+  if (state.particles) manager.camera.remove(state.particles);
 }
