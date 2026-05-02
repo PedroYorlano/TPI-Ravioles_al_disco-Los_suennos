@@ -1,11 +1,10 @@
 import * as THREE from 'three';
-import { Howl } from 'howler';
 
 window.hubVisitCount = window.hubVisitCount || 0;
 
 let state = {};
 let doorLight, moonlight;
-let footstepSound, breathSound, distantSound;
+let audioCtx;
 
 let keys = { w: false, a: false, s: false, d: false };
 
@@ -118,15 +117,69 @@ export async function init(manager) {
   manager.scene.add(floor);
 
   // Puerta iluminada al frente (Z = -2)
-  const doorGeo = new THREE.PlaneGeometry(1.2, 2.1);
-  const doorMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.8 });
+  const doorGroup = new THREE.Group();
+  doorGroup.position.set(0, 0, -1.99);
+
+  const doorFrameMat = new THREE.MeshStandardMaterial({
+    color: 0x111111,
+    roughness: 0.9,
+    side: THREE.DoubleSide
+  });
+  const doorFrameThickness = 0.08;
+  const doorFrameTop = new THREE.Mesh(new THREE.BoxGeometry(1.38, doorFrameThickness, 0.09), doorFrameMat);
+  doorFrameTop.position.set(0, 2.0, 0.025);
+  const doorFrameBottom = new THREE.Mesh(new THREE.BoxGeometry(1.38, doorFrameThickness, 0.09), doorFrameMat);
+  doorFrameBottom.position.set(0, 0.0, 0.025);
+  const doorFrameLeft = new THREE.Mesh(new THREE.BoxGeometry(doorFrameThickness, 2.0, 0.09), doorFrameMat);
+  doorFrameLeft.position.set(-0.69, 1.0, 0.025);
+  const doorFrameRight = new THREE.Mesh(new THREE.BoxGeometry(doorFrameThickness, 2.0, 0.09), doorFrameMat);
+  doorFrameRight.position.set(0.69, 1.0, 0.025);
+  doorGroup.add(doorFrameTop, doorFrameBottom, doorFrameLeft, doorFrameRight);
+
+  const innerGlowMat = new THREE.MeshBasicMaterial({
+    color: 0xffc47d,
+    transparent: true,
+    opacity: 0.9,
+    side: THREE.DoubleSide
+  });
+  const innerGlow = new THREE.Mesh(new THREE.PlaneGeometry(1.02, 1.9), innerGlowMat);
+  innerGlow.position.set(0, 0.95, 0.04);
+  doorGroup.add(innerGlow);
+
+  const doorGeo = new THREE.BoxGeometry(0.94, 1.84, 0.08);
+  const doorMat = new THREE.MeshStandardMaterial({
+    color: 0x24150d,
+    roughness: 0.78,
+    metalness: 0.03
+  });
   const door = new THREE.Mesh(doorGeo, doorMat);
-  door.position.set(0, 1.05, -1.99); // Apenas delante de la pared
-  manager.scene.add(door);
+  door.position.set(0, 0.92, 0.05);
+  doorGroup.add(door);
+
+  const doorPanelMat = new THREE.MeshStandardMaterial({
+    color: 0x2c1a10,
+    roughness: 0.82,
+    metalness: 0.02
+  });
+  const panelGeo = new THREE.BoxGeometry(0.78, 0.38, 0.02);
+  const panelTop = new THREE.Mesh(panelGeo, doorPanelMat);
+  panelTop.position.set(0, 1.33, 0.075);
+  const panelBottom = new THREE.Mesh(panelGeo, doorPanelMat);
+  panelBottom.position.set(0, 0.56, 0.075);
+  doorGroup.add(panelTop, panelBottom);
+
+  const handle = new THREE.Mesh(
+    new THREE.SphereGeometry(0.035, 12, 10),
+    new THREE.MeshStandardMaterial({ color: 0xb88a4d, metalness: 0.65, roughness: 0.3 })
+  );
+  handle.position.set(0.32, 0.9, 0.085);
+  doorGroup.add(handle);
+
+  manager.scene.add(doorGroup);
 
   // Luz que se filtra por debajo de la puerta
-  doorLight = new THREE.PointLight(0xffb055, 1.2, 3); // Luz cálida intensa pero de corto alcance
-  doorLight.position.set(0, 0.05, -2.1); // Detrás de la puerta, muy cerca del piso
+  doorLight = new THREE.PointLight(0xffb055, 0.7, 3.0); // Luz cálida de corto alcance
+  doorLight.position.set(0, 0.95, -2.1); // Detrás de la puerta, centrada para iluminar el hueco
   manager.scene.add(doorLight);
 
   // Luz de ambiente casi nula
@@ -311,6 +364,69 @@ export async function init(manager) {
   deskGroup.position.set(-1, 0, 1.7);
   manager.scene.add(deskGroup);
 
+  // Lámpara de escritorio realista con iluminación tenue
+  const lampGroup = new THREE.Group();
+  lampGroup.position.set(0.34, 0.78, 0.02);
+
+  const lampBase = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.12, 0.14, 0.03, 24),
+    new THREE.MeshStandardMaterial({ color: 0x2f261d, roughness: 0.45, metalness: 0.22 })
+  );
+  lampBase.position.y = 0.015;
+  lampGroup.add(lampBase);
+
+  const lampFoot = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.06, 0.08, 0.03, 24),
+    new THREE.MeshStandardMaterial({ color: 0x4b3a28, roughness: 0.5, metalness: 0.12 })
+  );
+  lampFoot.position.set(0.02, 0.045, 0.02);
+  lampGroup.add(lampFoot);
+
+  const lampStem = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.018, 0.022, 0.38, 16),
+    new THREE.MeshStandardMaterial({ color: 0x6b5438, roughness: 0.4, metalness: 0.18 })
+  );
+  lampStem.position.set(0.03, 0.24, 0.01);
+  lampStem.rotation.z = -0.18;
+  lampGroup.add(lampStem);
+
+  const lampArm = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.016, 0.02, 0.22, 16),
+    new THREE.MeshStandardMaterial({ color: 0x6b5438, roughness: 0.4, metalness: 0.18 })
+  );
+  lampArm.position.set(0.09, 0.43, 0.01);
+  lampArm.rotation.z = -0.72;
+  lampGroup.add(lampArm);
+
+  const lampShade = new THREE.Mesh(
+    new THREE.ConeGeometry(0.17, 0.24, 20, 1, true),
+    new THREE.MeshStandardMaterial({
+      color: 0x7a5f43,
+      roughness: 0.55,
+      metalness: 0.05,
+      side: THREE.DoubleSide
+    })
+  );
+  lampShade.position.set(0.18, 0.54, 0.01);
+  lampShade.rotation.z = Math.PI;
+  lampShade.rotation.x = -0.2;
+  lampGroup.add(lampShade);
+
+  const lampBulb = new THREE.Mesh(
+    new THREE.SphereGeometry(0.035, 16, 12),
+    new THREE.MeshBasicMaterial({ color: 0xfff1d6 })
+  );
+  lampBulb.position.set(0.17, 0.47, 0.01);
+  lampGroup.add(lampBulb);
+
+  const lampLight = new THREE.SpotLight(0xffd09a, 0.42, 4.8, Math.PI / 6, 0.55, 1);
+  lampLight.position.set(0.17, 0.56, 0.02);
+  lampLight.target.position.set(0.22, 0.12, -0.35);
+  lampGroup.add(lampLight);
+  lampGroup.add(lampLight.target);
+
+  deskGroup.add(lampGroup);
+
   // Visita 5: Marcas en la pared
   if (visit >= 5) {
     const markGeo = new THREE.PlaneGeometry(0.8, 0.8);
@@ -341,14 +457,62 @@ export async function init(manager) {
     manager.scene.add(markMesh);
   }
 
-  // AUDIO (Howler)
-  footstepSound = new Howl({ src: ['/assets/footstep_wood.wav'], volume: 0.6 });
-  breathSound = new Howl({ src: ['/assets/breath.wav'], loop: true, volume: 0.3 });
-  breathSound.play();
+  // AUDIO
+  audioCtx = null;
+}
 
-  if (visit >= 3) {
-    distantSound = new Howl({ src: ['/assets/distant_drone.wav'], loop: true, volume: 0.15 });
-    distantSound.play();
+function playHubFootstepSound() {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    if (!audioCtx) audioCtx = new AudioContext();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    const now = audioCtx.currentTime;
+    const bufferSize = Math.floor(audioCtx.sampleRate * 0.14);
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+
+    for (let i = 0; i < bufferSize; i++) {
+      const t = i / bufferSize;
+      const decay = Math.pow(1 - t, 2.2);
+      data[i] = (Math.random() * 2 - 1) * decay * 0.16;
+    }
+
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(180 + Math.random() * 70, now);
+    filter.Q.value = 0.85;
+
+    const noiseGain = audioCtx.createGain();
+    noiseGain.gain.setValueAtTime(0, now);
+    noiseGain.gain.linearRampToValueAtTime(0.1 + Math.random() * 0.05, now + 0.01);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.13);
+
+    const thump = audioCtx.createOscillator();
+    thump.type = 'sine';
+    thump.frequency.setValueAtTime(68 + Math.random() * 10, now);
+
+    const thumpGain = audioCtx.createGain();
+    thumpGain.gain.setValueAtTime(0, now);
+    thumpGain.gain.linearRampToValueAtTime(0.08, now + 0.005);
+    thumpGain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(audioCtx.destination);
+
+    thump.connect(thumpGain);
+    thumpGain.connect(audioCtx.destination);
+
+    noise.start(now);
+    thump.start(now);
+    thump.stop(now + 0.13);
+  } catch (error) {
+    console.warn('Hub footstep sound error', error);
   }
 }
 
@@ -381,7 +545,7 @@ export function update(deltaTime, manager) {
 
   // Sonido de pasos
   if (isMoving && state.timeElapsed - state.lastStepTime > 0.6) {
-    footstepSound.play();
+    playHubFootstepSound();
     state.lastStepTime = state.timeElapsed;
   }
 
@@ -389,15 +553,11 @@ export function update(deltaTime, manager) {
   const doorPos = new THREE.Vector3(0, 1.6, -2);
   if (manager.camera.position.distanceTo(doorPos) < 0.8) {
     state.transitioning = true;
-    
-    breathSound.fade(0.3, 0, 1500);
-    if (distantSound) distantSound.fade(0.15, 0, 1500);
 
     // Mapeo del próximo sueño según la visita
-    let nextDream = 'sea';
-    if (state.visit === 1) nextDream = 'dream2'; // Asumiendo que el juego empieza en sea
-    else if (state.visit === 2) nextDream = 'dream3'; 
-    else nextDream = 'sea'; 
+    let nextDream = 'dream3';
+    if (state.visit === 1) nextDream = 'dream1';
+    else if (state.visit === 2) nextDream = 'dream2';
     
     manager.transitionTo(nextDream);
   }
@@ -406,7 +566,7 @@ export function update(deltaTime, manager) {
 export function dispose(manager) {
   window.removeEventListener('keydown', keydownListener);
   window.removeEventListener('keyup', keyupListener);
-  if (breathSound) breathSound.unload();
-  if (footstepSound) footstepSound.unload();
-  if (distantSound) distantSound.unload();
+  if (audioCtx && audioCtx.state !== 'closed') {
+    audioCtx.close();
+  }
 }

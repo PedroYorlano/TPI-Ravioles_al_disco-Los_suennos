@@ -14,5 +14,5 @@ manager.registerScene('hub', () => import('./scenes/hubScene.js'));
 manager.registerScene('dream2', () => import('./scenes/dream2.js'));
 manager.registerScene('dream3', () => import('./scenes/dream3.js'));
 
-// Iniciar con la nueva escena para probar
-manager.transitionTo('dream1');
+// Iniciar en el hub para seguir el orden Hub -> dream1 -> hub -> dream2 -> hub -> dream3
+manager.transitionTo('hub');

@@ -71,8 +71,8 @@ export async function init(manager) {
 
   // Audio
   sounds.hum = new Howl({ src: ['/assets/fluorescent_hum.wav'], loop: true, volume: 0.2 });
-  sounds.step = new Howl({ src: ['/assets/footstep_carpet.wav'], volume: 0.5 });
-  sounds.stalkerStep = new Howl({ src: ['/assets/footstep_carpet.wav'], volume: 0.0 });
+  sounds.step = new Howl({ src: ['/assets/footstep_wood.wav'], volume: 0.35 });
+  sounds.stalkerStep = new Howl({ src: ['/assets/footstep_wood.wav'], volume: 0.0 });
   sounds.breath = new Howl({ src: ['/assets/breath_heavy.wav'], loop: true, volume: 0.0 });
   
   sounds.hum.play();
