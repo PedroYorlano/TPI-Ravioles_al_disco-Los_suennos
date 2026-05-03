@@ -555,9 +555,11 @@ export function update(deltaTime, manager) {
     state.transitioning = true;
 
     // Mapeo del próximo sueño según la visita
-    let nextDream = 'dream3';
+    let nextDream = 'dream1';
     if (state.visit === 1) nextDream = 'dream1';
     else if (state.visit === 2) nextDream = 'dream2';
+    else if (state.visit === 3) nextDream = 'dream3';
+    else if (state.visit === 4) nextDream = 'dream4';
     
     manager.transitionTo(nextDream);
   }
