@@ -12,7 +12,8 @@ const dreamOptions = [
   { id: 'dream2', label: 'Sueno 2' },
   { id: 'dream3', label: 'Sueno 3' },
   { id: 'dream4', label: 'Sueno 4' },
-  { id: 'dream5', label: 'Sueno 5' }
+  { id: 'dream5', label: 'Sueno 5' },
+  { id: 'dream6', label: 'Sueno 6' }
 ];
 
 let keys = { w: false, a: false, s: false, d: false };
@@ -133,7 +134,7 @@ function selectDreamByIndex(index, manager) {
 
 function debugMenuKeydownListener(e) {
   const key = e.key;
-  if (key >= '1' && key <= '5') {
+  if (key >= '1' && key <= '6') {
     const index = Number(key) - 1;
     selectDreamByIndex(index, state.manager);
   }

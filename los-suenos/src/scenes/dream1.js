@@ -34,7 +34,7 @@ export function init(manager) {
   manager.scene.add(sky);
 
   const skyUniforms = sky.material.uniforms;
-  skyUniforms['turbidity'].value = 10; 
+  skyUniforms['turbidity'].value = 10;
   skyUniforms['rayleigh'].value = 3.0; // Alta dispersión para cielos anaranjados/rojizos
   skyUniforms['mieCoefficient'].value = 0.005;
   skyUniforms['mieDirectionalG'].value = 0.7;
@@ -88,7 +88,7 @@ export function init(manager) {
 
   // Ola gigante (Muro de agua que curvaremos dinámicamente)
   const waveGeo = new THREE.PlaneGeometry(400, 40, 128, 64);
-  
+
   // Clonamos el material para la ola para controlar sus texturas independientemente y que no se estiren
   const waveMaterial = waterMaterial.clone();
   const waveNormals = waterNormals.clone();
@@ -123,7 +123,7 @@ export function init(manager) {
   ui.style.fontFamily = 'sans-serif';
   ui.style.textShadow = '1px 1px 2px black';
   ui.style.pointerEvents = 'none';
-  ui.innerHTML = '<h1>El Sueño del Mar</h1><p>Haz click para mover la cámara.</p><p>Usa WASD para caminar lento por el agua.</p>';
+  ui.innerHTML = '<p>Haz click para mover la cámara.</p><p>Usa WASD para caminar por el agua.</p>';
   document.body.appendChild(ui);
 
   // Sonido ambient del océano de fondo
@@ -141,7 +141,7 @@ export function update(deltaTime, manager) {
   // La textura de la ola gigante se desliza hacia abajo imitando agua cayendo por la pared
   if (waveMesh && waveMesh.material.normalMap) {
     waveMesh.material.normalMap.offset.x += 0.015 * deltaTime;
-    waveMesh.material.normalMap.offset.y -= 0.06 * deltaTime; 
+    waveMesh.material.normalMap.offset.y -= 0.06 * deltaTime;
   }
 
   // Animar olas del mar (macro-oleaje)
@@ -150,14 +150,14 @@ export function update(deltaTime, manager) {
     const positions = seaMesh.geometry.attributes.position;
     for (let i = 0; i < positions.count; i++) {
       const x = positions.getX(i);
-      const z = positions.getZ(i); 
+      const z = positions.getZ(i);
       // Múltiples frecuencias para un oleaje caótico y realista
-      const waveHeight = 
-        Math.sin(x * 0.2 + time) * 0.1 + 
+      const waveHeight =
+        Math.sin(x * 0.2 + time) * 0.1 +
         Math.cos(z * 0.2 + time * 0.8) * 0.1 +
         Math.sin(x * 0.5 - time * 1.5) * 0.05 +
         Math.cos(z * 0.4 + time * 1.2) * 0.05;
-      positions.setY(i, waveHeight); 
+      positions.setY(i, waveHeight);
     }
     positions.needsUpdate = true;
     seaMesh.geometry.computeVertexNormals(); // Para que la luz reaccione al oleaje
@@ -174,12 +174,12 @@ export function update(deltaTime, manager) {
 
     // Velocidad base lenta (porque está en el agua)
     const speed = 1.5 * speedMult * deltaTime;
-    
+
     if (keys.w) manager.controls.moveForward(speed);
     if (keys.s) manager.controls.moveForward(-speed);
     if (keys.a) manager.controls.moveRight(-speed);
     if (keys.d) manager.controls.moveRight(speed);
-    
+
     // Sonido de pasos en el agua
     const isMoving = keys.w || keys.s || keys.a || keys.d;
     if (isMoving && state.timeElapsed - state.lastSplashTime > 0.6) {
@@ -203,7 +203,7 @@ export function update(deltaTime, manager) {
 
   if (state.waveActive && !state.impacted) {
     waveMesh.position.z += 6 * deltaTime; // Avanza más lento (6 unidades/seg)
-    
+
     const growth = state.timeElapsed - 8;
     // Crece mucho más lentamente
     const baseScale = 0.2;
@@ -211,7 +211,7 @@ export function update(deltaTime, manager) {
     const scale = Math.min(exponentialGrowth, 5); // Limitar a escala máxima
     waveMesh.scale.set(1, scale, scale);
     // Ajustar Y para que la base de la ola (-20 local) quede al nivel del agua
-    waveMesh.position.y = 20 * scale - 2; 
+    waveMesh.position.y = 20 * scale - 2;
 
     // Prevenir el estiramiento de la textura escalando las repeticiones UV verticalmente
     waveMesh.material.normalMap.repeat.set(20, 2 * scale);
@@ -222,15 +222,15 @@ export function update(deltaTime, manager) {
       const x = wPos.getX(i);
       const y = wPos.getY(i);
       // y va de -20 a 20
-      const ny = (y + 20) / 40; 
+      const ny = (y + 20) / 40;
       // Curva principal de la cresta hacia adelante (+Z)
-      const baseZ = Math.pow(ny, 3) * 20; 
+      const baseZ = Math.pow(ny, 3) * 20;
       // Turbulencia orgánica hiper caótica sumando múltiples ondas de ruido
-      const noise = 
-        Math.sin(x * 0.2 + state.timeElapsed * 2) * 1.5 + 
+      const noise =
+        Math.sin(x * 0.2 + state.timeElapsed * 2) * 1.5 +
         Math.cos(y * 0.4 + x * 0.1 + state.timeElapsed * 4) * 2.5 +
         Math.sin(x * 0.8 - y * 0.3 - state.timeElapsed * 6) * 1.0;
-      
+
       const turbZ = noise * ny; // El ruido es más violento en la cresta
       wPos.setZ(i, baseZ + turbZ);
     }
@@ -248,11 +248,11 @@ export function update(deltaTime, manager) {
     const rx = (Math.random() - 0.5) * state.shakeIntensity;
     const ry = (Math.random() - 0.5) * state.shakeIntensity;
     const rz = (Math.random() - 0.5) * state.shakeIntensity;
-    
+
     manager.camera.position.x += rx;
     manager.camera.position.y = state.initialCameraY + ry;
     manager.camera.position.z += rz;
-    
+
     state.shakeIntensity *= 0.95; // Disminuye lentamente
   }
 }
@@ -260,7 +260,7 @@ export function update(deltaTime, manager) {
 function triggerImpact(manager) {
   state.impacted = true;
   state.shakeIntensity = 3.0; // Shake fuerte
-  
+
   // Fade out del sonido ambient
   if (state.ambientOceanSource && state.ambientOceanSource.context) {
     const gain = state.ambientOceanSource.context.createGain();
@@ -283,15 +283,15 @@ function playWaveEmergingSound() {
     if (!AudioContext) return;
     if (!audioCtx) audioCtx = new AudioContext();
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    
+
     const now = audioCtx.currentTime;
     const duration = 13.5; // Duración extendida hasta el impacto (~80 unidades / 6 unidades por seg)
-    
+
     // Generar ruido blanco modulado como sonido de agua en movimiento
     const bufferSize = Math.floor(audioCtx.sampleRate * duration);
     const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
     const data = buffer.getChannelData(0);
-    
+
     // Ruido turbulento con modulación lenta
     for (let i = 0; i < bufferSize; i++) {
       const t = i / bufferSize;
@@ -302,10 +302,10 @@ function playWaveEmergingSound() {
       const turbulence = Math.sin(t * Math.PI * 2.5) * 0.25;
       data[i] = (Math.random() * 2 - 1) * (modulation + turbulence);
     }
-    
+
     const noiseSource = audioCtx.createBufferSource();
     noiseSource.buffer = buffer;
-    
+
     // Filtro pasa-banda que simula el movimiento del agua durante todo el trayecto
     const filter = audioCtx.createBiquadFilter();
     filter.type = 'bandpass';
@@ -315,18 +315,18 @@ function playWaveEmergingSound() {
     filter.Q.setValueAtTime(1.2, now);
     filter.Q.exponentialRampToValueAtTime(1.8, now + 11);
     filter.Q.exponentialRampToValueAtTime(1.0, now + 13.5);
-    
+
     // Ganancia que crece lentamente y alcanza máximo antes del impacto
     const gainNode = audioCtx.createGain();
     gainNode.gain.setValueAtTime(0.2, now);
     gainNode.gain.exponentialRampToValueAtTime(1.5, now + 11.5); // Alcanza máximo lentamente
     gainNode.gain.exponentialRampToValueAtTime(1.2, now + 12.5); // Se mantiene
     gainNode.gain.exponentialRampToValueAtTime(0.1, now + 13.5); // Fade out al final
-    
+
     noiseSource.connect(filter);
     filter.connect(gainNode);
     gainNode.connect(audioCtx.destination);
-    
+
     noiseSource.start(now);
     state.waveEmergingSource = noiseSource; // Guardar referencia
   } catch (e) {
@@ -340,15 +340,15 @@ function playWaveBreakSound() {
     if (!AudioContext) return;
     if (!audioCtx) audioCtx = new AudioContext();
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    
+
     const now = audioCtx.currentTime;
-    
+
     // FASE 1: Choque inicial de alta frecuencia (0.8s)
     const duration1 = 0.8;
     const bufferSize1 = Math.floor(audioCtx.sampleRate * duration1);
     const buffer1 = audioCtx.createBuffer(1, bufferSize1, audioCtx.sampleRate);
     const data1 = buffer1.getChannelData(0);
-    
+
     // Ruido agresivo con envolvente rápida
     for (let i = 0; i < bufferSize1; i++) {
       const t = i / bufferSize1;
@@ -356,10 +356,10 @@ function playWaveBreakSound() {
       const envelope = Math.exp(-t * 5.5) * (1 - t * 0.5);
       data1[i] = (Math.random() * 2 - 1) * envelope * 0.9; // Mayor amplitud
     }
-    
+
     const noiseSource1 = audioCtx.createBufferSource();
     noiseSource1.buffer = buffer1;
-    
+
     // Filtro pasa-banda agresivo para alta frecuencia
     const filter1 = audioCtx.createBiquadFilter();
     filter1.type = 'bandpass';
@@ -367,33 +367,33 @@ function playWaveBreakSound() {
     filter1.frequency.exponentialRampToValueAtTime(1200, now + 0.6);
     filter1.Q.setValueAtTime(3, now);
     filter1.Q.exponentialRampToValueAtTime(1, now + 0.8);
-    
+
     const gain1 = audioCtx.createGain();
     gain1.gain.setValueAtTime(0, now);
     gain1.gain.linearRampToValueAtTime(2.5, now + 0.02); // Ataque MÁS AGRESIVO
     gain1.gain.exponentialRampToValueAtTime(0.3, now + 0.8);
-    
+
     noiseSource1.connect(filter1);
     filter1.connect(gain1);
     gain1.connect(audioCtx.destination);
     noiseSource1.start(now);
-    
+
     // FASE 2: Boom grave de impacto profundo (1.5s)
     const bass = audioCtx.createOscillator();
     bass.type = 'sine';
     bass.frequency.setValueAtTime(120, now);
     bass.frequency.exponentialRampToValueAtTime(30, now + 1.2);
-    
+
     const bassGain = audioCtx.createGain();
     bassGain.gain.setValueAtTime(0, now);
     bassGain.gain.linearRampToValueAtTime(2.0, now + 0.1); // Ataque rápido
     bassGain.gain.exponentialRampToValueAtTime(0.1, now + 1.5); // Decay largo
-    
+
     bass.connect(bassGain);
     bassGain.connect(audioCtx.destination);
     bass.start(now);
     bass.stop(now + 1.5);
-    
+
     // FASE 3: Boom de impacto final muy grave (0.4s después)
     setTimeout(() => {
       if (audioCtx.state === 'running') {
@@ -401,19 +401,19 @@ function playWaveBreakSound() {
         finalBoom.type = 'sine';
         finalBoom.frequency.setValueAtTime(80, now + 1.3);
         finalBoom.frequency.exponentialRampToValueAtTime(20, now + 1.7);
-        
+
         const finalGain = audioCtx.createGain();
         finalGain.gain.setValueAtTime(0, now + 1.3);
         finalGain.gain.linearRampToValueAtTime(1.8, now + 1.35);
         finalGain.gain.exponentialRampToValueAtTime(0, now + 1.7);
-        
+
         finalBoom.connect(finalGain);
         finalGain.connect(audioCtx.destination);
         finalBoom.start(now + 1.3);
         finalBoom.stop(now + 1.7);
       }
     }, 1300);
-    
+
   } catch (e) {
     console.error("Wave break sound error", e);
   }
@@ -425,7 +425,7 @@ function playFootstepSound() {
     if (!AudioContext) return;
     if (!audioCtx) audioCtx = new AudioContext();
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    
+
     const now = audioCtx.currentTime;
     const bufferSize = audioCtx.sampleRate * 0.22; // Corto para un paso
     const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
@@ -433,26 +433,26 @@ function playFootstepSound() {
     for (let i = 0; i < bufferSize; i++) {
       data[i] = (Math.random() * 2 - 1) * 0.35;
     }
-    
+
     const noise = audioCtx.createBufferSource();
     noise.buffer = buffer;
-    
+
     // Bandpass para simular un golpe breve y opaco de pisada
     const filter = audioCtx.createBiquadFilter();
     filter.type = 'bandpass';
     filter.frequency.setValueAtTime(160 + Math.random() * 120, now); // Variación aleatoria
-    
+
     const gainNode = audioCtx.createGain();
     gainNode.gain.setValueAtTime(0, now);
     gainNode.gain.linearRampToValueAtTime(0.22, now + 0.02);
     gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
-    
+
     noise.connect(filter);
     filter.connect(gainNode);
     gainNode.connect(audioCtx.destination);
-    
+
     noise.start(now);
-  } catch(e) {
+  } catch (e) {
     console.warn("Splash sound error", e);
   }
 }
@@ -463,15 +463,15 @@ function playAmbientOceanSound() {
     if (!AudioContext) return;
     if (!audioCtx) audioCtx = new AudioContext();
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    
+
     const now = audioCtx.currentTime;
     const duration = 30; // Sonido largo y continuo
-    
+
     // Generar ruido blanco para el sonido del océano
     const bufferSize = Math.floor(audioCtx.sampleRate * duration);
     const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
     const data = buffer.getChannelData(0);
-    
+
     // Ruido suave y modulado como olas lejanas
     for (let i = 0; i < bufferSize; i++) {
       const t = i / bufferSize;
@@ -480,25 +480,25 @@ function playAmbientOceanSound() {
       const randomNoise = Math.random() * 2 - 1;
       data[i] = randomNoise * lowFreqModulation * 0.5;
     }
-    
+
     const noiseSource = audioCtx.createBufferSource();
     noiseSource.buffer = buffer;
     noiseSource.loop = true; // Repetir infinitamente
-    
+
     // Filtro pasa-bajos para sonido suave de océano
     const filter = audioCtx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(800, now);
     filter.Q.value = 0.5;
-    
+
     // Ganancia muy baja (sonido de fondo)
     const gainNode = audioCtx.createGain();
     gainNode.gain.setValueAtTime(0.15, now); // Muy bajo, apenas perceptible
-    
+
     noiseSource.connect(filter);
     filter.connect(gainNode);
     gainNode.connect(audioCtx.destination);
-    
+
     noiseSource.start(now);
     state.ambientOceanSource = noiseSource; // Guardar referencia para detenerlo después
   } catch (e) {
@@ -509,10 +509,10 @@ function playAmbientOceanSound() {
 export function dispose(manager) {
   window.removeEventListener('keydown', keydownListener);
   window.removeEventListener('keyup', keyupListener);
-  
+
   manager.scene.fog = null;
   manager.camera.position.y = 1.6; // Restaurar altura promedio al salir
-  
+
   const ui = document.getElementById('scene-ui');
   if (ui) ui.remove();
 
