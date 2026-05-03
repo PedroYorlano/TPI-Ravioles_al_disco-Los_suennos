@@ -5,6 +5,15 @@ window.hubVisitCount = window.hubVisitCount || 0;
 let state = {};
 let doorLight, moonlight;
 let audioCtx;
+let debugMenuRoot = null;
+
+const dreamOptions = [
+  { id: 'dream1', label: 'Sueno 1' },
+  { id: 'dream2', label: 'Sueno 2' },
+  { id: 'dream3', label: 'Sueno 3' },
+  { id: 'dream4', label: 'Sueno 4' },
+  { id: 'dream5', label: 'Sueno 5' }
+];
 
 let keys = { w: false, a: false, s: false, d: false };
 
@@ -22,6 +31,114 @@ const keyupListener = (e) => {
   if (e.key === 'd' || e.key === 'D') keys.d = false;
 };
 
+function setMenuVisibility(isVisible, manager) {
+  if (!debugMenuRoot) return;
+  debugMenuRoot.style.display = isVisible ? 'flex' : 'none';
+  if (isVisible) {
+    manager.controls.unlock();
+  }
+}
+
+function buildDebugDreamMenu(manager) {
+  if (debugMenuRoot) {
+    debugMenuRoot.remove();
+  }
+
+  const root = document.createElement('div');
+  root.id = 'hub-dream-debug-menu';
+  root.style.position = 'fixed';
+  root.style.inset = '0';
+  root.style.display = 'none';
+  root.style.alignItems = 'center';
+  root.style.justifyContent = 'center';
+  root.style.pointerEvents = 'none';
+  root.style.zIndex = '40';
+
+  const panel = document.createElement('div');
+  panel.style.width = 'min(520px, 84vw)';
+  panel.style.border = '1px solid rgba(255, 219, 161, 0.5)';
+  panel.style.background = 'linear-gradient(180deg, rgba(17, 11, 8, 0.96), rgba(8, 8, 11, 0.92))';
+  panel.style.boxShadow = '0 18px 45px rgba(0, 0, 0, 0.55), inset 0 0 35px rgba(255, 181, 112, 0.08)';
+  panel.style.padding = '26px 28px';
+  panel.style.color = '#f5e6d3';
+  panel.style.fontFamily = 'Georgia, Cambria, "Times New Roman", serif';
+  panel.style.pointerEvents = 'auto';
+
+  const title = document.createElement('h2');
+  title.textContent = 'A que sueno vamos?';
+  title.style.margin = '0 0 8px 0';
+  title.style.fontSize = '30px';
+  title.style.fontWeight = '600';
+  title.style.letterSpacing = '0.4px';
+
+  const subtitle = document.createElement('p');
+  subtitle.textContent = 'Menu de debug: elegi un sueno con click o usando teclas 1-5.';
+  subtitle.style.margin = '0 0 18px 0';
+  subtitle.style.fontSize = '14px';
+  subtitle.style.opacity = '0.85';
+
+  const list = document.createElement('div');
+  list.style.display = 'grid';
+  list.style.gridTemplateColumns = '1fr';
+  list.style.gap = '10px';
+
+  dreamOptions.forEach((dream, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = `${index + 1}. ${dream.label}`;
+    button.style.textAlign = 'left';
+    button.style.padding = '11px 12px';
+    button.style.border = '1px solid rgba(255, 190, 112, 0.38)';
+    button.style.background = 'rgba(255, 166, 77, 0.08)';
+    button.style.color = '#ffe7c4';
+    button.style.cursor = 'pointer';
+    button.style.fontFamily = 'inherit';
+    button.style.fontSize = '16px';
+
+    button.addEventListener('mouseenter', () => {
+      button.style.background = 'rgba(255, 188, 123, 0.2)';
+    });
+
+    button.addEventListener('mouseleave', () => {
+      button.style.background = 'rgba(255, 166, 77, 0.08)';
+    });
+
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (state.transitioning) return;
+      state.transitioning = true;
+      setMenuVisibility(false, manager);
+      manager.transitionTo(dream.id);
+    });
+
+    list.appendChild(button);
+  });
+
+  panel.appendChild(title);
+  panel.appendChild(subtitle);
+  panel.appendChild(list);
+  root.appendChild(panel);
+  document.body.appendChild(root);
+  debugMenuRoot = root;
+}
+
+function selectDreamByIndex(index, manager) {
+  if (!state.nearDoor || state.transitioning) return;
+  const dream = dreamOptions[index];
+  if (!dream) return;
+  state.transitioning = true;
+  setMenuVisibility(false, manager);
+  manager.transitionTo(dream.id);
+}
+
+function debugMenuKeydownListener(e) {
+  const key = e.key;
+  if (key >= '1' && key <= '5') {
+    const index = Number(key) - 1;
+    selectDreamByIndex(index, state.manager);
+  }
+}
+
 export async function init(manager) {
   window.addEventListener('keydown', keydownListener);
   window.addEventListener('keyup', keyupListener);
@@ -33,8 +150,13 @@ export async function init(manager) {
     timeElapsed: 0,
     lastStepTime: 0,
     transitioning: false,
-    visit: visit
+    visit: visit,
+    nearDoor: false,
+    manager
   };
+
+  buildDebugDreamMenu(manager);
+  window.addEventListener('keydown', debugMenuKeydownListener);
 
   // Cámara inicial
   manager.camera.position.set(0, 1.6, 1.5); // Empezamos cerca del fondo de la habitación
@@ -549,26 +671,23 @@ export function update(deltaTime, manager) {
     state.lastStepTime = state.timeElapsed;
   }
 
-  // Mecánica: Caminar hacia la puerta para transicionar
+  // Debug: al acercarte a la puerta se abre el selector de suenos.
   const doorPos = new THREE.Vector3(0, 1.6, -2);
-  if (manager.camera.position.distanceTo(doorPos) < 0.8) {
-    state.transitioning = true;
-
-    // Mapeo del próximo sueño según la visita
-    let nextDream = 'dream1';
-    if (state.visit === 1) nextDream = 'dream1';
-    else if (state.visit === 2) nextDream = 'dream2';
-    else if (state.visit === 3) nextDream = 'dream3';
-    else if (state.visit === 4) nextDream = 'dream4';
-    else if (state.visit === 5) nextDream = 'dream5';
-    
-    manager.transitionTo(nextDream);
+  const nearDoor = manager.camera.position.distanceTo(doorPos) < 0.92;
+  if (nearDoor !== state.nearDoor) {
+    state.nearDoor = nearDoor;
+    setMenuVisibility(nearDoor && !state.transitioning, manager);
   }
 }
 
 export function dispose(manager) {
   window.removeEventListener('keydown', keydownListener);
   window.removeEventListener('keyup', keyupListener);
+  window.removeEventListener('keydown', debugMenuKeydownListener);
+  if (debugMenuRoot) {
+    debugMenuRoot.remove();
+    debugMenuRoot = null;
+  }
   if (audioCtx && audioCtx.state !== 'closed') {
     audioCtx.close();
   }
