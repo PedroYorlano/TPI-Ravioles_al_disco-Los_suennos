@@ -560,6 +560,7 @@ export function update(deltaTime, manager) {
     else if (state.visit === 2) nextDream = 'dream2';
     else if (state.visit === 3) nextDream = 'dream3';
     else if (state.visit === 4) nextDream = 'dream4';
+    else if (state.visit === 5) nextDream = 'dream5';
     
     manager.transitionTo(nextDream);
   }

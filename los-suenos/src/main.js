@@ -9,11 +9,12 @@ const appDiv = document.getElementById('app');
 if (appDiv) appDiv.remove();
 
 // Registrar las escenas (Lazy Loading / importación dinámica)
-manager.registerScene('dream1', () => import('./scenes/dream1.js'));
 manager.registerScene('hub', () => import('./scenes/hubScene.js'));
+manager.registerScene('dream1', () => import('./scenes/dream1.js'));
 manager.registerScene('dream2', () => import('./scenes/dream2.js'));
 manager.registerScene('dream3', () => import('./scenes/dream3.js'));
 manager.registerScene('dream4', () => import('./scenes/dream4.js'));
+manager.registerScene('dream5', () => import('./scenes/dream5.js'));
 
 // Iniciar en el hub para seguir el orden Hub -> dream1 -> hub -> dream2 -> hub -> dream3
-manager.transitionTo('dream4');
+manager.transitionTo('dream5');
