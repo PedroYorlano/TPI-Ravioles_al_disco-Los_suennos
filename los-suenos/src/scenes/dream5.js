@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createNoise2D } from 'simplex-noise';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   EffectComposer,
   RenderPass,
@@ -12,6 +13,9 @@ import {
 let state = {};
 let materials = {};
 let effects = {};
+
+const DREAM5_AUDIO_SRC = '/assets/Across the Stars (Love Theme from Star Wars_ Attack of the Clones) (mp3cut.net).mp3';
+const DREAM5_RISER_SRC = '/assets/Riser - Sound Effect (Free).mp3';
 
 let keys = { w: false, a: false, s: false, d: false, q: false, e: false };
 
@@ -39,10 +43,12 @@ export async function init(manager) {
     stars1: null,
     stars2: null,
     sky: null,
+    musicEl: null,
+    riserEl: null,
     audioCtx: null,
-    padGain: null,
-    distortion: null,
-    oscillators: [],
+    riserSource: null,
+    riserGain: null,
+    riserTimeout: null,
     noise2D: createNoise2D()
   };
 
@@ -57,7 +63,7 @@ export async function init(manager) {
 
   createSky();
   createStars();
-  createPlanets();
+  await createPlanets();
 
   const ambient = new THREE.AmbientLight(0xffffff, 0.2);
   state.universeGroup.add(ambient);
@@ -201,6 +207,41 @@ function createStars() {
   state.universeGroup.add(state.stars2);
 }
 
+async function addFloatingPlanetModel(fileName, position, speed, targetDiameter = 80) {
+  try {
+    const loader = new GLTFLoader();
+    const modelUrl = new URL(`../assets/models/${fileName}`, import.meta.url).href;
+    const gltf = await loader.loadAsync(modelUrl);
+    const model = gltf.scene;
+
+    model.traverse((obj) => {
+      if (obj.isMesh) {
+        obj.castShadow = false;
+        obj.receiveShadow = false;
+      }
+    });
+
+    const bounds = new THREE.Box3().setFromObject(model);
+    const size = new THREE.Vector3();
+    bounds.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    const scaleFactor = targetDiameter / maxDim;
+    model.scale.multiplyScalar(scaleFactor);
+
+    const centeredBounds = new THREE.Box3().setFromObject(model);
+    const center = new THREE.Vector3();
+    centeredBounds.getCenter(center);
+    model.position.sub(center);
+    model.position.add(position);
+
+    const dummyMat = { uniforms: { time: { value: 0 }, collapse: { value: 0 } } };
+    state.planets.push({ mesh: model, mat: dummyMat, speed });
+    state.universeGroup.add(model);
+  } catch (error) {
+    console.warn(`No se pudo cargar ${fileName} en dream5`, error);
+  }
+}
+
 // Shader común para deforma planetas en el colapso
 const planetVertexShader = `
   varying vec2 vUv;
@@ -233,7 +274,7 @@ const planetVertexShader = `
   }
 `;
 
-function createPlanets() {
+async function createPlanets() {
   // 1. Planeta Gaseoso (Bandas)
   const gasMat = new THREE.ShaderMaterial({
     uniforms: { time: { value: 0 }, collapse: { value: 0 } },
@@ -332,6 +373,29 @@ function createPlanets() {
   icePlanet.position.set(180, -100, 150);
   state.planets.push({ mesh: icePlanet, mat: iceMat, speed: 0.12 });
   state.universeGroup.add(icePlanet);
+
+  // Planetas GLB solicitados: 4 instancias de cada uno con tamaños y distancias distintas.
+  await Promise.all([
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(420, 140, 60), 0.045, 120),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(-520, -120, -260), -0.03, 85),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(220, 260, -420), 0.06, 150),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(-160, 80, 520), 0.09, 65),
+
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(-360, -90, 260), -0.07, 95),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(540, 180, -180), 0.05, 130),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(-220, 320, -520), 0.04, 70),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(120, -240, 430), -0.08, 160),
+
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(320, 70, -280), 0.06, 100),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(-610, 40, 160), -0.05, 75),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(260, -220, 500), 0.07, 140),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(-180, 210, -460), 0.03, 60),
+
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(-260, 110, -340), 0.09, 72),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(580, -150, 220), -0.06, 55),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(-420, 260, 380), 0.08, 105),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(180, -300, -560), -0.04, 42)
+  ]);
 }
 
 function setupPostprocessing(manager) {
@@ -355,75 +419,96 @@ function setupPostprocessing(manager) {
 
 function setupAudio() {
   try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    const ctx = new AudioContext();
-    state.audioCtx = ctx;
+    const firstAudio = new Audio(encodeURI(DREAM5_AUDIO_SRC));
+    firstAudio.preload = 'auto';
+    firstAudio.loop = false;
+    firstAudio.volume = 0.75;
+    state.musicEl = firstAudio;
 
-    // Pad Ambiental Espacial
-    state.padGain = ctx.createGain();
-    state.padGain.gain.value = 0.5;
+    const startRiser = () => {
+      if (state.riserEl) return;
 
-    // Distorsión para el colapso
-    state.distortion = ctx.createWaveShaper();
-    state.distortion.curve = makeDistortionCurve(0);
-    state.distortion.oversample = '4x';
-    // No asignamos curva inicialmente para que el audio pase limpio sin atenuarse
+      const riser = new Audio(encodeURI(DREAM5_RISER_SRC));
+      riser.preload = 'auto';
+      riser.loop = false;
+      state.riserEl = riser;
 
-    // Reanudar contexto si el navegador lo bloquea (Autoplay Policy)
-    const resumeAudio = () => {
-      if (ctx.state === 'suspended') ctx.resume();
-      document.removeEventListener('click', resumeAudio);
-      document.removeEventListener('keydown', resumeAudio);
+      // El blur final comienza apenas arranca el segundo audio.
+      state.collapseStarted = true;
+      state.collapseFactor = 0;
+
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (AudioContext) {
+        try {
+          if (!state.audioCtx) state.audioCtx = new AudioContext();
+          const ctx = state.audioCtx;
+          if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+          const source = ctx.createMediaElementSource(riser);
+          const gain = ctx.createGain();
+          gain.gain.value = 0.9;
+          source.connect(gain).connect(ctx.destination);
+          state.riserSource = source;
+          state.riserGain = gain;
+        } catch (e) {
+          riser.volume = 0.9;
+          console.warn('No se pudo usar WebAudio para el riser; usando volumen nativo', e);
+        }
+      } else {
+        riser.volume = 0.9;
+      }
+
+      riser.addEventListener('timeupdate', () => {
+        if (riser.duration && isFinite(riser.duration)) {
+          state.collapseFactor = THREE.MathUtils.clamp(riser.currentTime / riser.duration, 0, 1);
+        }
+      });
+
+      riser.addEventListener('ended', () => {
+        state.collapseFactor = 1.0;
+        if (state.riserTimeout) {
+          clearTimeout(state.riserTimeout);
+          state.riserTimeout = null;
+        }
+        if (state.manager && !state.climaxTriggered) {
+          triggerClimax(state.manager);
+        }
+      });
+
+      riser.play().catch((err) => {
+        console.warn('No se pudo reproducir el riser', err);
+        if (state.manager && !state.climaxTriggered) triggerClimax(state.manager);
+      });
+
+      if (riser.duration && isFinite(riser.duration)) {
+        state.riserTimeout = setTimeout(() => {
+          state.collapseFactor = 1.0;
+          if (state.manager && !state.climaxTriggered) triggerClimax(state.manager);
+        }, Math.max(0, riser.duration * 1000));
+      }
     };
-    document.addEventListener('click', resumeAudio);
-    document.addEventListener('keydown', resumeAudio);
 
-    state.padGain.connect(state.distortion);
-    state.distortion.connect(ctx.destination);
-
-    // Acorde irreal y disonante
-    const freqs = [110.0, 164.81, 233.08, 311.13]; // A, E, Bb, Eb
-    freqs.forEach((f, i) => {
-      const osc = ctx.createOscillator();
-      osc.type = 'sine';
-      osc.frequency.value = f;
-
-      const lfo = ctx.createOscillator();
-      lfo.type = 'sine';
-      lfo.frequency.value = 0.02 + i * 0.01;
-
-      const oscGain = ctx.createGain();
-      oscGain.gain.value = 0.2;
-
-      lfo.connect(oscGain.gain);
-      osc.connect(oscGain);
-      oscGain.connect(state.padGain);
-
-      osc.start();
-      lfo.start();
-      state.oscillators.push(osc, lfo);
+    firstAudio.addEventListener('ended', () => {
+      startRiser();
     });
+
+    const tryPlay = () => {
+      if (!state.musicEl) return;
+      state.musicEl.play().catch(() => {});
+    };
+
+    // Intento inicial + desbloqueo por interacción (autoplay policy)
+    tryPlay();
+    const unlockAudio = () => {
+      tryPlay();
+      document.removeEventListener('click', unlockAudio);
+      document.removeEventListener('keydown', unlockAudio);
+    };
+    document.addEventListener('click', unlockAudio);
+    document.addEventListener('keydown', unlockAudio);
 
   } catch (e) {
     console.warn("Audio error", e);
   }
-}
-
-function makeDistortionCurve(amount) {
-  const k = typeof amount === 'number' ? amount : 50,
-    n_samples = 44100,
-    curve = new Float32Array(n_samples),
-    deg = Math.PI / 180;
-  for (let i = 0; i < n_samples; ++i) {
-    const x = i * 2 / n_samples - 1;
-    if (k === 0) {
-      curve[i] = x;
-    } else {
-      curve[i] = (3 + k) * x * 20 * deg / (Math.PI + k * Math.abs(x));
-    }
-  }
-  return curve;
 }
 
 export function update(deltaTime, manager) {
@@ -495,22 +580,18 @@ export function update(deltaTime, manager) {
     }
   });
 
-  // 3. Audio Colapso
-  if (state.collapseStarted && state.distortion) {
-    const distAmount = state.collapseFactor * 100;
-    state.distortion.curve = makeDistortionCurve(distAmount);
+  // 3. Blur final / colapso visual sincronizado con el riser
+  if (state.collapseStarted) {
     effects.noise.blendMode.opacity.value = state.collapseFactor * 0.5;
+    if (effects.bloom) {
+      effects.bloom.intensity = 2.0 + state.collapseFactor * 2.0;
+    }
   }
 }
 
 function triggerClimax(manager) {
   state.climaxTriggered = true;
   state.climaxTimer = 0;
-
-  // Silencio total antes del final
-  if (state.audioCtx && state.padGain) {
-    state.padGain.gain.linearRampToValueAtTime(0, state.audioCtx.currentTime + 0.1);
-  }
 
   // Parálisis
   state.velocity.set(0, 0, 0);
@@ -548,5 +629,32 @@ export function dispose(manager) {
 
   if (state.audioCtx && state.audioCtx.state !== 'closed') {
     state.audioCtx.close();
+  }
+
+  if (state.riserTimeout) {
+    clearTimeout(state.riserTimeout);
+    state.riserTimeout = null;
+  }
+
+  if (state.musicEl) {
+    state.musicEl.pause();
+    state.musicEl.currentTime = 0;
+    state.musicEl = null;
+  }
+
+  if (state.riserEl) {
+    state.riserEl.pause();
+    state.riserEl.currentTime = 0;
+    state.riserEl = null;
+  }
+
+  if (state.riserSource) {
+    try { state.riserSource.disconnect(); } catch (e) {}
+    state.riserSource = null;
+  }
+
+  if (state.riserGain) {
+    try { state.riserGain.disconnect(); } catch (e) {}
+    state.riserGain = null;
   }
 }
