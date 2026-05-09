@@ -16,7 +16,10 @@ let state = {
     sineGain: null,
     glitchValue: 0,
     playerZ: 15, // Distancia inicial
-    figureLight: null
+    figureLight: null,
+    audioElement: null,
+    text1: null,
+    text2: null
 };
 
 let keys = { w: false };
@@ -38,7 +41,10 @@ export async function init(manager) {
         sineGain: null,
         glitchValue: 0,
         playerZ: 12,
-        figureLight: null
+        figureLight: null,
+        audioElement: null,
+        text1: null,
+        text2: null
     };
 
     keys = { w: false };
@@ -213,6 +219,89 @@ export async function init(manager) {
     portalLight.position.set(0, 1.6, 1.0);
     manager.scene.add(portalLight);
 
+    // --- Audio ---
+    // Crear elemento de audio
+    state.audioElement = document.createElement('audio');
+    state.audioElement.src = '/assets/Así vive una persona con Esquizofrenia (8D Experiencia) audio real (mp3cut.net).mp3';
+    state.audioElement.loop = true;
+    state.audioElement.volume = 0.5;
+    state.audioElement.crossOrigin = 'anonymous';
+    state.audioElement.autoplay = true;
+    document.body.appendChild(state.audioElement);
+    
+    // Intentar reproducir inmediatamente
+    const playPromise = state.audioElement.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(e => {
+            console.warn('Autoplay blocked, waiting for user interaction:', e);
+            // Reanudar audio con primer click o tecla
+            const resumeAudio = () => {
+                state.audioElement.play().catch(err => console.warn('Play failed:', err));
+                document.removeEventListener('click', resumeAudio);
+                document.removeEventListener('keydown', resumeAudio);
+            };
+            document.addEventListener('click', resumeAudio, { once: true });
+            document.addEventListener('keydown', resumeAudio, { once: true });
+        });
+    }
+
+    // Crear overlay de texto
+    state.textOverlay = document.createElement('div');
+    
+    // Agregar Google Fonts para fuente horrorosa
+    const fontLink = document.createElement('link');
+    fontLink.href = 'https://fonts.googleapis.com/css2?family=Creepster&display=swap';
+    fontLink.rel = 'stylesheet';
+    document.head.appendChild(fontLink);
+    
+    // Mensaje 1
+    const text1 = document.createElement('div');
+    text1.id = 'dream6-msg1';
+    text1.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-family: 'Creepster', cursive;
+        font-size: 72px;
+        color: #ff3333;
+        text-align: center;
+        pointer-events: none;
+        z-index: 100;
+        line-height: 1.5;
+        text-shadow: 0 0 20px rgba(255, 0, 0, 0.8), 0 0 40px rgba(0, 0, 0, 1);
+        opacity: 0;
+        transition: opacity 3s ease-in-out;
+        letter-spacing: 2px;
+    `;
+    text1.innerHTML = '¿Se terminó?';
+    document.body.appendChild(text1);
+    state.text1 = text1;
+    
+    // Mensaje 2
+    const text2 = document.createElement('div');
+    text2.id = 'dream6-msg2';
+    text2.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-family: 'Creepster', cursive;
+        font-size: 72px;
+        color: #ff3333;
+        text-align: center;
+        pointer-events: none;
+        z-index: 100;
+        line-height: 1.5;
+        text-shadow: 0 0 20px rgba(255, 0, 0, 0.8), 0 0 40px rgba(0, 0, 0, 1);
+        opacity: 0;
+        transition: opacity 3s ease-in-out;
+        letter-spacing: 2px;
+    `;
+    text2.innerHTML = 'Y... ¿Si nunca comenzó?';
+    document.body.appendChild(text2);
+    state.text2 = text2;
+
     // Suelo Procedural (Grietas)
     state.floorMat = new THREE.ShaderMaterial({
         uniforms: {
@@ -321,6 +410,27 @@ export function update(deltaTime, manager) {
   state.floorMat.uniforms.time.value = state.timeElapsed;
   state.wallsMat.uniforms.time.value = state.timeElapsed;
 
+  // --- Control de textos con timing ---
+  // Mensaje 1: aparece en segundo 2, desaparece en segundo 9 (fade out 3s: 6-9)
+  if (state.timeElapsed >= 2 && state.timeElapsed < 6) {
+    state.text1.style.opacity = '1'; // Visible y fijo
+  } else if (state.timeElapsed >= 6 && state.timeElapsed < 9) {
+    // Fade out durante 3 segundos
+    const fadeProgress = (state.timeElapsed - 6) / 3;
+    state.text1.style.opacity = String(1 - fadeProgress);
+  } else if (state.timeElapsed >= 9) {
+    state.text1.style.opacity = '0';
+  }
+  
+  // Mensaje 2: aparece en segundo 9 (fade in 3s: 6-9)
+  if (state.timeElapsed >= 6 && state.timeElapsed < 9) {
+    // Fade in durante 3 segundos (desde 6 a 9)
+    const fadeProgress = (state.timeElapsed - 6) / 3;
+    state.text2.style.opacity = String(fadeProgress);
+  } else if (state.timeElapsed >= 9) {
+    state.text2.style.opacity = '1'; // Visible y fijo
+  }
+
   if (state.climaxTriggered) {
     state.climaxTimer += deltaTime;
     
@@ -399,6 +509,21 @@ export function update(deltaTime, manager) {
 export function dispose(manager) {
   window.removeEventListener('keydown', keydownListener);
   window.removeEventListener('keyup', keyupListener);
+  
+  // Limpiar audio
+  if (state.audioElement) {
+    state.audioElement.pause();
+    state.audioElement.src = '';
+    document.body.removeChild(state.audioElement);
+  }
+  
+  // Limpiar textos
+  if (state.text1 && document.body.contains(state.text1)) {
+    document.body.removeChild(state.text1);
+  }
+  if (state.text2 && document.body.contains(state.text2)) {
+    document.body.removeChild(state.text2);
+  }
   
   if (manager.composer) {
     manager.composer.dispose();
