@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { EffectComposer, RenderPass, EffectPass, ChromaticAberrationEffect } from 'postprocessing';
+import { Howl } from 'howler';
 
 let state = {
     timeElapsed: 0,
@@ -285,6 +286,12 @@ export async function init(manager) {
   manager.composer = composer;
 
   setupAudio();
+
+  // Reproducir audio principal del sueño 6 al iniciar
+  try {
+    state.bgMusic = new Howl({ src: ['/assets/Así vive una persona con Esquizofrenia (8D Experiencia) audio real (mp3cut.net).mp3'], loop: false, volume: 0.9 });
+    state.bgMusic.play();
+  } catch (e) { console.warn('dream6 bgMusic err', e); }
 }
 
 function setupAudio() {
@@ -406,6 +413,10 @@ export function dispose(manager) {
   }
   if (state.mirrorTarget) {
     state.mirrorTarget.dispose();
+  }
+  if (state.bgMusic) {
+    try { state.bgMusic.stop(); state.bgMusic.unload(); } catch (e) {}
+    state.bgMusic = null;
   }
   if (state.audioCtx && state.audioCtx.state !== 'closed') {
     state.audioCtx.close();
