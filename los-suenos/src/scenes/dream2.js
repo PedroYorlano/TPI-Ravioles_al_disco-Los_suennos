@@ -33,6 +33,8 @@ let state = {
 };
 
 let motionBlurEffect;
+let keys = { w: false, a: false, s: false, d: false };
+let keydownListener, keyupListener;
 
 export async function init(manager) {
   state = {
@@ -43,6 +45,17 @@ export async function init(manager) {
     audio: null,
     transitionTimer: null
   };
+
+  keydownListener = (e) => {
+    const key = e.key.toLowerCase();
+    if (keys.hasOwnProperty(key)) keys[key] = true;
+  };
+  keyupListener = (e) => {
+    const key = e.key.toLowerCase();
+    if (keys.hasOwnProperty(key)) keys[key] = false;
+  };
+  window.addEventListener('keydown', keydownListener);
+  window.addEventListener('keyup', keyupListener);
 
   manager.camera.position.set(0, 540, 120);
   manager.camera.rotation.set(0, 0, 0);
@@ -56,7 +69,7 @@ export async function init(manager) {
   const vignette = new VignetteEffect({ darkness: 0.5 });
   const effectPass = new EffectPass(manager.camera, motionBlurEffect, vignette);
   composer.addPass(effectPass);
-  
+
   manager.composer = composer;
 
   // Entorno urbano modular con GLTFLoader y fallback procedural.
@@ -69,8 +82,9 @@ export async function init(manager) {
   // Lógica de caída desacoplada para facilitar ajuste de física y cámara.
   // Duración total: ~10 segundos
   state.fallController = createFallController(manager.camera, {
-    startY: 460,
-    startZ: 100,
+    startX: 300,
+    startY: 650,
+    startZ: 200,
     startDelay: 0.3,
     impactY: 20,
     maxSpeed: 120,
@@ -94,6 +108,13 @@ export function update(deltaTime, manager) {
   if (state.audio) {
     state.audio.update(fall.speedNorm, deltaTime);
   }
+
+  // Movimiento horizontal (leve ajuste de dirección con el cuerpo al caer)
+  const steerSpeed = 4 * deltaTime; // Velocidad reducida drásticamente (antes 45)
+  if (keys.w) manager.controls.moveForward(steerSpeed);
+  if (keys.s) manager.controls.moveForward(-steerSpeed);
+  if (keys.a) manager.controls.moveRight(-steerSpeed);
+  if (keys.d) manager.controls.moveRight(steerSpeed);
 
   // Mantener imagen nitida durante casi toda la caida y activar blur solo cerca del impacto.
   const proximity = THREE.MathUtils.clamp(1 - manager.camera.position.y / 120, 0, 1);
@@ -143,4 +164,7 @@ export function dispose(manager) {
     state.city.dispose();
     state.city = null;
   }
+
+  window.removeEventListener('keydown', keydownListener);
+  window.removeEventListener('keyup', keyupListener);
 }

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 
 export function createFallController(camera, options = {}) {
   const {
+    startX = 0,
     startY = 560,
     startZ = 100,
     startDelay = 0.3,
@@ -18,7 +19,7 @@ export function createFallController(camera, options = {}) {
     swayTime: 0
   };
 
-  camera.position.set(0, startY, startZ);
+  camera.position.set(startX, startY, startZ);
   // Mirar directamente hacia el suelo (rotación -90 grados en X)
   camera.rotation.set(-Math.PI / 2, 0, 0);
 
@@ -42,14 +43,13 @@ export function createFallController(camera, options = {}) {
         camera.position.y -= state.speed * deltaTime;
         camera.position.z -= state.speed * deltaTime * 0.3;
 
-        // Movimiento horizontal muy limitado (casi sin sway, solo vibración mínima)
+        // Movimiento horizontal muy limitado (casi sin sway constante, lo reemplazaremos con WASD)
         state.swayTime += deltaTime;
         const swayAmount = 0.005 + speedNorm * 0.003;
-        camera.position.x = (Math.random() - 0.5) * swayAmount * 0.5;
         
-        // Rotación limitada: mantener vista principalmente hacia abajo con sutil oscilación
-        camera.rotation.z = Math.sin(state.swayTime * 3.0) * swayAmount * 0.08;
-        camera.rotation.x = -Math.PI / 2 + Math.sin(state.swayTime * 2.2) * swayAmount * 0.05;
+        // Efecto de vibración en la caída
+        camera.position.x += (Math.random() - 0.5) * swayAmount;
+        camera.position.z += (Math.random() - 0.5) * swayAmount;
 
         if (camera.position.y <= impactY) {
           state.impacted = true;

@@ -163,9 +163,10 @@ export async function init(manager) {
   manager.camera.position.set(0, 1.6, 1.5); // Empezamos cerca del fondo de la habitación
   manager.camera.rotation.set(0, 0, 0);
 
-  // Limpiar niebla y background global
+  // Limpiar niebla, background y environment global
   manager.scene.background = new THREE.Color(0x000000);
   manager.scene.fog = null;
+  manager.scene.environment = null;
 
   // Cuarto: 5x4x3 (W:5, H:3, D:4). 
   // Construido con planos individuales para permitir un agujero real en la ventana lateral
