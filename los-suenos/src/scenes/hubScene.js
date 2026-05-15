@@ -170,7 +170,7 @@ export async function init(manager) {
   // Cuarto: 5x4x3 (W:5, H:3, D:4). 
   // Construido con planos individuales para permitir un agujero real en la ventana lateral
   const roomMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9, side: THREE.DoubleSide });
-  
+
   // Techo
   const ceilGeo = new THREE.PlaneGeometry(5, 4);
   const ceiling = new THREE.Mesh(ceilGeo, roomMat);
@@ -198,13 +198,13 @@ export async function init(manager) {
 
   // Pared Izquierda (X = -2.5) ensamblada en 4 partes para dejar un hueco de 1.5x1.5 en el centro
   const lBot = new THREE.Mesh(new THREE.PlaneGeometry(4, 0.75), roomMat);
-  lBot.position.set(-2.5, 0.375, 0); lBot.rotation.y = Math.PI/2;
+  lBot.position.set(-2.5, 0.375, 0); lBot.rotation.y = Math.PI / 2;
   const lTop = new THREE.Mesh(new THREE.PlaneGeometry(4, 0.75), roomMat);
-  lTop.position.set(-2.5, 2.625, 0); lTop.rotation.y = Math.PI/2;
+  lTop.position.set(-2.5, 2.625, 0); lTop.rotation.y = Math.PI / 2;
   const lFront = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 1.5), roomMat);
-  lFront.position.set(-2.5, 1.5, -1.375); lFront.rotation.y = Math.PI/2;
+  lFront.position.set(-2.5, 1.5, -1.375); lFront.rotation.y = Math.PI / 2;
   const lBack = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 1.5), roomMat);
-  lBack.position.set(-2.5, 1.5, 1.375); lBack.rotation.y = Math.PI/2;
+  lBack.position.set(-2.5, 1.5, 1.375); lBack.rotation.y = Math.PI / 2;
   manager.scene.add(lBot, lTop, lFront, lBack);
 
   // Piso de madera con normal map procedural
@@ -214,13 +214,13 @@ export async function init(manager) {
   const ctx = floorCanvas.getContext('2d');
   ctx.fillStyle = '#111';
   ctx.fillRect(0, 0, 512, 512);
-  for(let i=0; i<80; i++) {
+  for (let i = 0; i < 80; i++) {
     ctx.strokeStyle = '#444';
     ctx.lineWidth = 1 + Math.random() * 3;
     ctx.beginPath();
     const x = Math.random() * 512;
     ctx.moveTo(x, 0);
-    ctx.lineTo(x + (Math.random()-0.5)*10, 512);
+    ctx.lineTo(x + (Math.random() - 0.5) * 10, 512);
     ctx.stroke();
   }
   const woodTexture = new THREE.CanvasTexture(floorCanvas);
@@ -322,32 +322,201 @@ export async function init(manager) {
     const windowMesh = new THREE.Mesh(windowGeo, windowMat);
     windowGroup.add(windowMesh);
   } else {
-    // Imagen fotorrealista de paisaje con luna llena
-    const textureLoader = new THREE.TextureLoader();
-    const windowTex = textureLoader.load('/textures/night_window_view.png');
-    // PARALAJE: Escalamos y empujamos la imagen gigante hacia afuera (z=-15) para crear profundidad real
-    const viewGeo = new THREE.PlaneGeometry(30, 30);
-    const viewMat = new THREE.MeshBasicMaterial({ map: windowTex });
-    const viewMesh = new THREE.Mesh(viewGeo, viewMat);
-    viewMesh.position.set(0, 5, -15);
-    windowGroup.add(viewMesh);
+    // Shaders procedurales para la ventana exterior
+    const windowVertexShader = `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+    `;
 
-    // CAMUFLAJE DEL TRUCO: Caja negra gigante alrededor de la vista para que no se vea el "vacío" desde ángulos extremos
-    const voidGeo = new THREE.BoxGeometry(30, 30, 16);
-    const voidMat = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide });
-    const voidBox = new THREE.Mesh(voidGeo, voidMat);
-    voidBox.position.set(0, 5, -8);
-    windowGroup.add(voidBox);
+    const windowFragmentShader = `
+    uniform float uTime;
+    varying vec2 vUv;
+
+    float random(vec2 st) {
+        return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+    }
+
+    void main() {
+        vec2 uv = vUv;
+
+        // 1. Cielo nocturno
+        vec3 zenithColor = vec3(5.0/255.0, 10.0/255.0, 20.0/255.0); // #050a14
+        vec3 horizonColor = vec3(10.0/255.0, 22.0/255.0, 40.0/255.0); // #0a1628
+        vec3 skyColor = mix(horizonColor, zenithColor, uv.y);
+
+        // Estrellas
+        // Como es un cilindro panorámico, escalamos X para compensar el ratio (942 ancho vs 300 alto)
+        vec2 st = vec2(uv.x * 3.14, uv.y);
+        float starNoise = random(st * 5000.0);
+        float starThreshold = 0.995;
+        if (starNoise > starThreshold) {
+            float starIntensity = (starNoise - starThreshold) / (1.0 - starThreshold);
+            float twinkle = sin(uTime * (random(uv) * 5.0 + 1.0)) * 0.5 + 0.5;
+            skyColor += vec3(starIntensity * twinkle);
+        }
+
+        gl_FragColor = vec4(skyColor, 1.0);
+    }
+    `;
+
+    state.windowUniforms = {
+      uTime: { value: 0 }
+    };
+
+    // Cilindro gigante que envuelve la habitación (cielo panorámico 360)
+    // CylinderGeometry(radiusTop, radiusBottom, height, radialSegments, heightSegments, openEnded)
+    const windowGeo = new THREE.CylinderGeometry(150, 150, 300, 32, 1, true);
+    const windowMat = new THREE.ShaderMaterial({
+      vertexShader: windowVertexShader,
+      fragmentShader: windowFragmentShader,
+      uniforms: state.windowUniforms,
+      side: THREE.BackSide, // Vemos la parte interior del cilindro
+      transparent: false
+    });
+
+    const windowMesh = new THREE.Mesh(windowGeo, windowMat);
+    // Centrado en la habitación, envolviendo todo el escenario
+    windowMesh.position.set(0, 0, 0);
+    windowGroup.add(windowMesh);
+
+    // EXTERIOR 3D
+    state.exteriorGroup = new THREE.Group();
+    windowGroup.add(state.exteriorGroup);
+
+    // LUNA - Textura Procedural de Cráteres
+    const moonCanvas = document.createElement('canvas');
+    moonCanvas.width = 1024;
+    moonCanvas.height = 1024;
+    const ctxMoon = moonCanvas.getContext('2d');
+
+    // Base lunar
+    ctxMoon.fillStyle = '#b0b5a8';
+    ctxMoon.fillRect(0, 0, 1024, 1024);
+
+    // Ruido suave
+    for (let i = 0; i < 4000; i++) {
+      ctxMoon.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+      ctxMoon.fillRect(Math.random() * 1024, Math.random() * 1024, 4, 4);
+    }
+
+    // Cráteres procedimentales
+    for (let i = 0; i < 400; i++) {
+      const cx = Math.random() * 1024;
+      const cy = Math.random() * 1024;
+      // Algunos cráteres enormes (mares), muchos pequeños
+      const r = Math.random() > 0.9 ? (20 + Math.random() * 40) : (2 + Math.random() * 15);
+
+      const grad = ctxMoon.createRadialGradient(cx, cy, r * 0.2, cx, cy, r);
+      grad.addColorStop(0, 'rgba(80, 85, 75, 0.4)');
+      grad.addColorStop(0.7, 'rgba(130, 140, 130, 0.2)');
+      grad.addColorStop(0.9, 'rgba(180, 190, 180, 0.4)');
+      grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+      ctxMoon.fillStyle = grad;
+      ctxMoon.beginPath();
+      ctxMoon.arc(cx, cy, r, 0, Math.PI * 2);
+      ctxMoon.fill();
+    }
+    const moonTex = new THREE.CanvasTexture(moonCanvas);
+    moonTex.anisotropy = 4;
+
+    const moonGeo = new THREE.SphereGeometry(4, 64, 64);
+    const moonMat = new THREE.MeshStandardMaterial({
+      map: moonTex,
+      bumpMap: moonTex,
+      bumpScale: 0.15,
+      emissive: 0xf0f4e8,
+      emissiveMap: moonTex,
+      emissiveIntensity: 0.25, // Bajamos la emisividad general para dejar actuar a las sombras
+      color: 0xeeeeee,
+      roughness: 0.9,
+      metalness: 0.1
+    });
+    const moonMesh = new THREE.Mesh(moonGeo, moonMat);
+    moonMesh.receiveShadow = false;
+
+    // Asignamos la luna a su grupo (sin hacks de capas)
+    const moonLocalX = -15;
+    const moonLocalY = 25;
+    const moonLocalZ = -80;
+    moonMesh.position.set(moonLocalX, moonLocalY, moonLocalZ);
+    state.exteriorGroup.add(moonMesh);
+
+    // LUZ PARA DARLE FASE/VOLUMEN A LA LUNA (Solo ilumina la luna y muere rápido)
+    const moonSun = new THREE.PointLight(0xfff5e6, 3.5, 30);
+    // Posicionada muy cerca de la luna (arriba y a la izquierda en coords locales)
+    moonSun.position.set(moonLocalX - 8, moonLocalY + 8, moonLocalZ + 8);
+    state.exteriorGroup.add(moonSun);
+
+    // LUZ DE LA LUNA HACIA EL INTERIOR
+    // Se agrega a la escena global para iluminar bien el interior
+    const moonLight = new THREE.PointLight(0xcce0ff, 0.8, 200);
+    // La ventana está en global (-2.49, 1.5, 0) rota Math.PI/2 en Y
+    // Transformación correcta: X_global = -2.49 + Z_local, Z_global = -X_local
+    moonLight.position.set(-2.49 + moonLocalZ, 1.5 + moonLocalY, -moonLocalX);
+    manager.scene.add(moonLight);
+    state.moonLight = moonLight;
+
+    // SUELO EXTERIOR
+    const floorExtGeo = new THREE.PlaneGeometry(100, 100);
+    const floorExtMat = new THREE.MeshStandardMaterial({
+      color: 0x03060a, // Verde oscuro casi negro
+      roughness: 1
+    });
+    const floorExtMesh = new THREE.Mesh(floorExtGeo, floorExtMat);
+    floorExtMesh.rotation.x = -Math.PI / 2;
+    // Empujamos el plano en Z a -55 para que su borde más cercano no invada la habitación
+    floorExtMesh.position.set(0, -0.75, -50);
+    state.exteriorGroup.add(floorExtMesh);
+
+    // LUZ AMBIENTAL EXTERIOR
+    const extAmbient = new THREE.AmbientLight(0x0a1020, 0.1);
+    state.exteriorGroup.add(extAmbient);
+
+    // ÁRBOLES
+    const treeMat = new THREE.MeshStandardMaterial({
+      color: 0x050a0f,
+      roughness: 0.9,
+      metalness: 0
+    });
+
+    for (let i = 0; i < 100; i++) {
+      const treeGroup = new THREE.Group();
+      const height = 3 + Math.random() * 4; // Entre 3 y 7
+
+      const cone1 = new THREE.Mesh(new THREE.ConeGeometry(height * 0.25, height * 0.5, 8), treeMat);
+      cone1.position.y = height * 0.25;
+      const cone2 = new THREE.Mesh(new THREE.ConeGeometry(height * 0.2, height * 0.45, 8), treeMat);
+      cone2.position.y = height * 0.5;
+      const cone3 = new THREE.Mesh(new THREE.ConeGeometry(height * 0.15, height * 0.4, 8), treeMat);
+      cone3.position.y = height * 0.75;
+
+      treeGroup.add(cone1, cone2, cone3);
+
+      // Z entre -10 y -75
+      const zPos = -10 - Math.random() * 65;
+
+      // Distribuir en X de manera uniforme a lo largo del plano
+      const fraction = i / 99.0; // De 0 a 1
+      const spread = Math.abs(zPos) * 2.5 + 20; // Ancho generoso
+      const xPos = -spread / 2 + spread * fraction + (Math.random() - 0.5) * (spread * 0.1);
+
+      treeGroup.position.set(xPos, -0.75, zPos); // Alineado con el borde inferior del marco
+      state.exteriorGroup.add(treeGroup);
+    }
   }
 
   // Cristal reflexivo de la ventana (para agregar realismo y ocultar aún más el truco)
   const glassGeo = new THREE.PlaneGeometry(1.5, 1.5);
-  const glassMat = new THREE.MeshStandardMaterial({ 
-    color: 0x050505, 
-    metalness: 0.9, 
-    roughness: 0.1, 
-    transparent: true, 
-    opacity: 0.35 
+  const glassMat = new THREE.MeshStandardMaterial({
+    color: 0x050505,
+    metalness: 0.9,
+    roughness: 0.1,
+    transparent: true,
+    opacity: 0.35
   });
   const glassPane = new THREE.Mesh(glassGeo, glassMat);
   glassPane.position.set(0, 0, -0.05);
@@ -358,14 +527,14 @@ export async function init(manager) {
   const frameThick = 0.05;
   const topGeo = new THREE.BoxGeometry(1.5, frameThick, frameThick);
   const sideGeo = new THREE.BoxGeometry(frameThick, 1.5, frameThick);
-  
+
   const frameTop = new THREE.Mesh(topGeo, frameMat); frameTop.position.set(0, 0.75, 0.02);
   const frameBot = new THREE.Mesh(topGeo, frameMat); frameBot.position.set(0, -0.75, 0.02);
   const frameLeft = new THREE.Mesh(sideGeo, frameMat); frameLeft.position.set(-0.75, 0, 0.02);
   const frameRight = new THREE.Mesh(sideGeo, frameMat); frameRight.position.set(0.75, 0, 0.02);
   const frameCross1 = new THREE.Mesh(topGeo, frameMat); frameCross1.position.set(0, 0, 0.02);
   const frameCross2 = new THREE.Mesh(sideGeo, frameMat); frameCross2.position.set(0, 0, 0.02);
-  
+
   windowGroup.add(frameTop, frameBot, frameLeft, frameRight, frameCross1, frameCross2);
 
   // Visita < 3: Luna exterior muy tenue
@@ -419,16 +588,16 @@ export async function init(manager) {
     pillow1.position.set(-0.4, 0.5, 0.5);
     pillow1.rotation.set(-0.3, 0.5, 0);
     pillow2.position.set(0.2, 0.2, -1.2); // Tirada cerca del suelo
-    
+
     // Desordenar manta rotándola y moviéndola
     blanket.position.set(0.2, 0.5, -0.6);
     blanket.rotation.y = 0.4;
     blanket.rotation.z = 0.1;
-    
+
     // Deformación procedural de los vértices
     const bPos = blanket.geometry.attributes.position;
-    for(let i=0; i<bPos.count; i++) {
-      bPos.setY(i, bPos.getY(i) + (Math.random()-0.5)*0.15);
+    for (let i = 0; i < bPos.count; i++) {
+      bPos.setY(i, bPos.getY(i) + (Math.random() - 0.5) * 0.15);
     }
     blanket.geometry.computeVertexNormals();
   }
@@ -436,13 +605,13 @@ export async function init(manager) {
   // Silla realista armada por partes
   const chairGroup = new THREE.Group();
   const woodMat = new THREE.MeshStandardMaterial({ color: 0x3d2314, roughness: 0.85 });
-  
+
   // Asiento
   const seatGeo = new THREE.BoxGeometry(0.4, 0.05, 0.4);
   const seat = new THREE.Mesh(seatGeo, woodMat);
   seat.position.y = 0.4;
   chairGroup.add(seat);
-  
+
   // 4 Patas cilíndricas
   const legGeo = new THREE.CylinderGeometry(0.02, 0.015, 0.4);
   const leg1 = new THREE.Mesh(legGeo, woodMat); leg1.position.set(-0.18, 0.2, -0.18);
@@ -450,7 +619,7 @@ export async function init(manager) {
   const leg3 = new THREE.Mesh(legGeo, woodMat); leg3.position.set(-0.18, 0.2, 0.18);
   const leg4 = new THREE.Mesh(legGeo, woodMat); leg4.position.set(0.18, 0.2, 0.18);
   chairGroup.add(leg1, leg2, leg3, leg4);
-  
+
   // Respaldo
   const backGeo = new THREE.BoxGeometry(0.4, 0.4, 0.05);
   const back = new THREE.Mesh(backGeo, woodMat);
@@ -482,7 +651,7 @@ export async function init(manager) {
   const dLeg3 = new THREE.Mesh(deskLegGeo, deskMat); dLeg3.position.set(-0.65, 0.375, 0.25);
   const dLeg4 = new THREE.Mesh(deskLegGeo, deskMat); dLeg4.position.set(0.65, 0.375, 0.25);
   deskGroup.add(dLeg1, dLeg2, dLeg3, dLeg4);
-  
+
   // Pegado a la pared trasera (Z=2). La profundidad del escritorio es 0.6, su borde es 1.7 + 0.3 = 2.0
   deskGroup.position.set(-1, 0, 1.7);
   manager.scene.add(deskGroup);
@@ -561,10 +730,10 @@ export async function init(manager) {
     mctx.lineWidth = 4;
     mctx.globalAlpha = 0.3; // Tiza gastada
     // Dibujar palitos contando
-    for(let i=0; i<5; i++) {
+    for (let i = 0; i < 5; i++) {
       mctx.beginPath();
-      mctx.moveTo(50 + i*30, 50);
-      mctx.lineTo(50 + i*30 + (Math.random()-0.5)*15, 200);
+      mctx.moveTo(50 + i * 30, 50);
+      mctx.lineTo(50 + i * 30 + (Math.random() - 0.5) * 15, 200);
       mctx.stroke();
     }
     // Diagonal
@@ -642,6 +811,10 @@ function playHubFootstepSound() {
 export function update(deltaTime, manager) {
   state.timeElapsed += deltaTime;
 
+  if (state.windowUniforms) {
+    state.windowUniforms.uTime.value = state.timeElapsed;
+  }
+
   // Visita 6: Tilt de cámara permanente e incorregible (3 grados)
   if (state.visit >= 6) {
     manager.camera.rotation.z = THREE.MathUtils.degToRad(3);
@@ -651,6 +824,10 @@ export function update(deltaTime, manager) {
 
   const speed = 1.8 * deltaTime; // Movimiento lento en el hub
   const isMoving = keys.w || keys.a || keys.s || keys.d;
+
+  // Guardar posición anterior para resolver colisiones
+  const oldX = manager.camera.position.x;
+  const oldZ = manager.camera.position.z;
 
   if (keys.w) manager.controls.moveForward(speed);
   if (keys.s) manager.controls.moveForward(-speed);
@@ -665,6 +842,46 @@ export function update(deltaTime, manager) {
   if (manager.camera.position.x < -2.3) manager.camera.position.x = -2.3;
   if (manager.camera.position.z > 1.8) manager.camera.position.z = 1.8;
   if (manager.camera.position.z < -1.8) manager.camera.position.z = -1.8;
+
+  // Colisiones con objetos (AABB con deslizamiento)
+  const px = manager.camera.position.x;
+  const pz = manager.camera.position.z;
+  const pr = 0.25; // Radio de colisión del jugador
+
+  // Definir las "cajas" sólidas de los objetos
+  const boxes = [
+    { minX: 1.6 - 0.725, maxX: 1.6 + 0.725, minZ: 0.8 - 1.025, maxZ: 0.8 + 1.025 }, // Cama
+    { minX: -1.0 - 0.7, maxX: -1.0 + 0.7, minZ: 1.7 - 0.3, maxZ: 1.7 + 0.3 } // Escritorio
+  ];
+
+  // Silla (depende de si se movió o no según la visita)
+  if (state.visit === 1) {
+    boxes.push({ minX: -1.2, maxX: -0.8, minZ: 1.0, maxZ: 1.4 }); // Cerca del escritorio
+  } else {
+    boxes.push({ minX: 0.2, maxX: 0.8, minZ: -0.8, maxZ: -0.2 }); // Rotada y movida al centro
+  }
+
+  // Detectar y resolver
+  let colX = false;
+  let colZ = false;
+
+  for (const b of boxes) {
+    if (px > b.minX - pr && px < b.maxX + pr && pz > b.minZ - pr && pz < b.maxZ + pr) {
+      // Determinar en qué eje ocurrió el impacto para permitir deslizarse
+      if (oldX <= b.minX - pr || oldX >= b.maxX + pr) colX = true;
+      if (oldZ <= b.minZ - pr || oldZ >= b.maxZ + pr) colZ = true;
+      
+      // Si entramos exactamente por la esquina o hubo un salto brusco
+      if (!colX && !colZ) {
+        colX = true; 
+        colZ = true;
+      }
+    }
+  }
+
+  // Deshacer el movimiento solo en el eje que colisionó
+  if (colX) manager.camera.position.x = oldX;
+  if (colZ) manager.camera.position.z = oldZ;
 
   // Sonido de pasos
   if (isMoving && state.timeElapsed - state.lastStepTime > 0.6) {
@@ -691,5 +908,18 @@ export function dispose(manager) {
   }
   if (audioCtx && audioCtx.state !== 'closed') {
     audioCtx.close();
+  }
+
+  if (state.exteriorGroup) {
+    state.exteriorGroup.traverse((child) => {
+      if (child.isMesh) {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+      }
+    });
+    state.exteriorGroup.removeFromParent();
+  }
+  if (state.moonLight) {
+    state.moonLight.removeFromParent();
   }
 }
