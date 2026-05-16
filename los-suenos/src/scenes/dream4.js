@@ -5,10 +5,11 @@ import {
   RenderPass,
   EffectPass,
   GodRaysEffect,
-  SelectiveBloomEffect,
+  BloomEffect,
   DepthOfFieldEffect,
   ChromaticAberrationEffect,
   NoiseEffect,
+  VignetteEffect,
   BlendFunction
 } from 'postprocessing';
 
@@ -51,18 +52,58 @@ export async function init(manager) {
   manager.camera.rotation.set(0, 0, 0);
   manager.scene.background = new THREE.Color(0x050110);
 
-  // Niebla atmosférica volumétrica (cálida)
-  manager.scene.fog = new THREE.FogExp2(0xff7733, 0.008);
+  // Niebla atmosférica volumétrica (cálida, coincide con horizonte Y=0.0)
+  manager.scene.fog = new THREE.FogExp2(0xff6633, 0.008);
 
   // 1. Cielo Procedural con Nubes Estilizadas
   createSky(manager);
 
   // 2. Sol Físico Deslumbrante para God Rays
-  const sunGeo = new THREE.SphereGeometry(18, 64, 64);
-  const sunMat = new THREE.MeshBasicMaterial({ color: 0xffeebb });
+  const sunGroup = new THREE.Group();
+  sunGroup.position.set(0, -2, -180); // Parcialmente oculto por el horizonte
+
+  const sunGeo = new THREE.SphereGeometry(8, 32, 32);
+  const sunMat = new THREE.MeshStandardMaterial({
+    color: 0xffcc77,
+    emissive: 0xff9944,
+    emissiveIntensity: 2.0
+  });
   const sunMesh = new THREE.Mesh(sunGeo, sunMat);
-  sunMesh.position.set(0, 8, -180); // En el horizonte
-  manager.scene.add(sunMesh);
+  sunGroup.add(sunMesh);
+
+  // Canvas para los Sprites del halo del sol
+  const createHaloTex = (r, g, b, a) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128; canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    const grd = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grd.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${a})`);
+    grd.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(canvas);
+  };
+
+  const sunHalo1 = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: createHaloTex(255, 102, 0, 0.3),
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  }));
+  sunHalo1.scale.set(60, 60, 1);
+  sunGroup.add(sunHalo1);
+
+  const sunHalo2 = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: createHaloTex(255, 51, 0, 0.08),
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  }));
+  sunHalo2.scale.set(120, 120, 1);
+  sunGroup.add(sunHalo2);
+
+  manager.scene.add(sunGroup);
+  state.sunMesh = sunMesh; // guardamos para GodRays
 
   // 3. Terreno Hiperrealista y Pasto Instanciado con Viento
   createTerrainAndGrass(manager);
@@ -81,76 +122,70 @@ export async function init(manager) {
   manager.scene.add(dirLight);
 
   // 7. Postprocesado (Composer)
-  setupPostprocessing(manager, sunMesh);
+  setupPostprocessing(manager, state.sunMesh);
 
   // 8. Audio (Web Audio API nativa para pad cálido y viento)
   setupAudio();
 }
 
 function createSky(manager) {
-  const skyGeo = new THREE.SphereGeometry(300, 64, 64);
-
-  // Generar textura de nubes suaves
-  const canvas = document.createElement('canvas');
-  canvas.width = 1024; canvas.height = 1024;
-  const ctx = canvas.getContext('2d');
-
-  const imgData = ctx.createImageData(1024, 1024);
-  for (let x = 0; x < 1024; x++) {
-    for (let y = 0; y < 1024; y++) {
-      let n = noise2D(x * 0.005, y * 0.005) * 1.0 + noise2D(x * 0.015, y * 0.015) * 0.5;
-      n = (n + 1.5) / 3.0; // 0 a 1
-      n = Math.pow(n, 2.5); // Contrastar nubes
-      const idx = (y * 1024 + x) * 4;
-      imgData.data[idx] = 255;
-      imgData.data[idx + 1] = 200;
-      imgData.data[idx + 2] = 150;
-      imgData.data[idx + 3] = n * 180;
-    }
-  }
-  ctx.putImageData(imgData, 0, 0);
-  const cloudTex = new THREE.CanvasTexture(canvas);
-  cloudTex.wrapS = cloudTex.wrapT = THREE.RepeatWrapping;
+  const skyGeo = new THREE.SphereGeometry(400, 64, 64);
 
   const skyMat = new THREE.ShaderMaterial({
     uniforms: {
-      colorBottom: { value: new THREE.Color(0xff4400) }, // Naranja fuego
-      colorMid1: { value: new THREE.Color(0xff2266) },   // Rosa brillante
-      colorMid2: { value: new THREE.Color(0x440099) },   // Violeta oscuro
-      colorTop: { value: new THREE.Color(0x05021a) },    // Noche
-      cloudMap: { value: cloudTex }
+      uTime: { value: 0 }
     },
     vertexShader: `
-      varying vec3 vWorldPosition;
       varying vec2 vUv;
       void main() {
         vUv = uv;
-        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-        vWorldPosition = worldPosition.xyz;
-        gl_Position = projectionMatrix * viewMatrix * worldPosition;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
     fragmentShader: `
-      uniform vec3 colorBottom;
-      uniform vec3 colorMid1;
-      uniform vec3 colorMid2;
-      uniform vec3 colorTop;
-      uniform sampler2D cloudMap;
-      
-      varying vec3 vWorldPosition;
+      uniform float uTime;
       varying vec2 vUv;
-      
+
+      float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
+      float noise(vec2 x) {
+          vec2 i = floor(x); vec2 f = fract(x);
+          float a = hash(i); float b = hash(i + vec2(1.0, 0.0));
+          float c = hash(i + vec2(0.0, 1.0)); float d = hash(i + vec2(1.0, 1.0));
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+      }
+      float fbm(vec2 x) {
+          float v = 0.0; float a = 0.5;
+          vec2 shift = vec2(100.0);
+          mat2 rot = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.50));
+          for (int i = 0; i < 5; ++i) {
+              v += a * noise(x); x = rot * x * 2.0 + shift; a *= 0.5;
+          }
+          return v;
+      }
+
       void main() {
-        float h = normalize(vWorldPosition).y;
-        h = clamp((h + 0.1) / 0.8, 0.0, 1.0);
+        vec3 c0 = vec3(1.0, 0.4, 0.2);     // Naranja
+        vec3 c1 = vec3(1.0, 0.2, 0.53);    // Rosa fuerte
+        vec3 c2 = vec3(0.8, 0.26, 0.66);   // Magenta
+        vec3 c3 = vec3(0.4, 0.2, 0.8);     // Violeta
+        vec3 c4 = vec3(0.13, 0.06, 0.26);  // Índigo oscuro
         
-        vec3 color = mix(colorBottom, colorMid1, smoothstep(0.0, 0.2, h));
-        color = mix(color, colorMid2, smoothstep(0.2, 0.5, h));
-        color = mix(color, colorTop, smoothstep(0.5, 1.0, h));
+        float y = clamp(vUv.y, 0.0, 1.0);
         
-        vec4 clouds = texture2D(cloudMap, vUv * vec2(4.0, 2.0));
-        color = mix(color, clouds.rgb, clouds.a * smoothstep(0.0, 0.4, h));
+        vec3 color;
+        if (y < 0.2) color = mix(c0, c1, smoothstep(0.0, 0.2, y));
+        else if (y < 0.5) color = mix(c1, c2, smoothstep(0.2, 0.5, y));
+        else if (y < 0.8) color = mix(c2, c3, smoothstep(0.5, 0.8, y));
+        else color = mix(c3, c4, smoothstep(0.8, 1.0, y));
+
+        float n = fbm(vUv * 10.0 + uTime * 0.02);
+        float cloudMask = smoothstep(0.3, 0.7, y) * (1.0 - smoothstep(0.7, 0.9, y));
+        vec3 cloudColor = vec3(1.0);
+        float cloudAlpha = n * 0.15 * cloudMask;
         
+        color = mix(color, cloudColor, cloudAlpha);
+
         gl_FragColor = vec4(color, 1.0);
       }
     `,
@@ -159,6 +194,7 @@ function createSky(manager) {
   });
   const sky = new THREE.Mesh(skyGeo, skyMat);
   manager.scene.add(sky);
+  materials.skyMat = skyMat;
 }
 
 function createTerrainAndGrass(manager) {
@@ -195,7 +231,10 @@ function createTerrainAndGrass(manager) {
   const grassMat = new THREE.MeshStandardMaterial({
     color: 0xffaa33, // Pasto iluminado por el atardecer
     roughness: 0.8,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
+    alphaTest: 0.6,
+    depthWrite: true,
+    depthTest: true
   });
 
   // Inyectar shader custom para animación de viento en InstancedMesh
@@ -203,16 +242,30 @@ function createTerrainAndGrass(manager) {
     shader.uniforms.time = { value: 0 };
     materials.grassUniforms = shader.uniforms;
     shader.vertexShader = `
+      varying vec2 vUvGrass;
       uniform float time;
       ${shader.vertexShader}
     `.replace(
       `#include <begin_vertex>`,
       `
       #include <begin_vertex>
+      vUvGrass = uv;
       // Viento basado en posición de instancia y tiempo
       float wind = sin(time * 2.0 + instanceMatrix[3][0] * 0.2 + instanceMatrix[3][2] * 0.2) * 0.3;
       transformed.x += wind * uv.y * uv.y;
       transformed.z += wind * uv.y * uv.y;
+      `
+    );
+    shader.fragmentShader = `
+      varying vec2 vUvGrass;
+      ${shader.fragmentShader}
+    `.replace(
+      `#include <opaque_fragment>`,
+      `
+      #include <opaque_fragment>
+      // Descartar fragmentos fuera de la forma orgánica curva de la hoja
+      float grassShape = step(abs(vUvGrass.x - 0.5), 0.4 * (1.0 - vUvGrass.y));
+      if (grassShape < 0.5) discard;
       `
     );
   };
@@ -244,59 +297,143 @@ function createFigure(manager) {
   figure.group = new THREE.Group();
   figure.group.position.set(0, 0, -state.figureDistance);
 
-  // Silueta Majestuosa (Más esbelta y surrealista)
-  const mat = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 1.0 });
-
-  const bodyGeo = new THREE.CylinderGeometry(0.15, 0.4, 2.5, 32);
-  const body = new THREE.Mesh(bodyGeo, mat);
-  body.position.y = 1.25;
-
-  const headGeo = new THREE.SphereGeometry(0.22, 32, 32);
-  const head = new THREE.Mesh(headGeo, mat);
-  head.position.y = 2.7;
-
-  // Túnica flotante
-  const cloakGeo = new THREE.ConeGeometry(0.6, 2.0, 32, 1, true);
-  const cloak = new THREE.Mesh(cloakGeo, mat);
-  cloak.position.y = 1.0;
-
-  figure.armPivot = new THREE.Group();
-  figure.armPivot.position.set(0.3, 2.2, 0); // Hombro
-  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.04, 1.2, 16), mat);
-  arm.position.set(0, -0.6, 0);
-  figure.armPivot.add(arm);
-
-  figure.group.add(body, head, cloak, figure.armPivot);
-
-  // Aura volumétrica (Múltiples Sprites)
-  figure.halos = [];
-  const colors = [
-    { c: '255, 120, 50', s: 6, o: 1.0 },
-    { c: '255, 60, 200', s: 8, o: 0.6 },
-    { c: '100, 50, 255', s: 12, o: 0.3 }
-  ];
-
-  colors.forEach(cfg => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 128; canvas.height = 128;
-    const ctx = canvas.getContext('2d');
-    const grd = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    grd.addColorStop(0, `rgba(${cfg.c}, ${cfg.o})`);
-    grd.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = grd;
-    ctx.fillRect(0, 0, 128, 128);
-
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: new THREE.CanvasTexture(canvas),
-      blending: THREE.AdditiveBlending,
-      transparent: true,
-      depthWrite: false
-    }));
-    sprite.scale.set(cfg.s, cfg.s, 1);
-    sprite.position.set(0, 1.5, -0.5);
-    figure.halos.push(sprite);
-    figure.group.add(sprite);
+  // Silueta Humana Básica
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x000000,
+    emissive: 0x000000,
+    roughness: 1.0,
+    metalness: 0.0
   });
+
+  const bodyGroup = new THREE.Group();
+
+  // Cadera (Esfera achatada para curvas más suaves y anchas)
+  const pelvisGeo = new THREE.SphereGeometry(0.24, 16, 16);
+  const pelvis = new THREE.Mesh(pelvisGeo, mat);
+  pelvis.scale.set(1.0, 0.75, 0.85);
+  pelvis.position.y = 0.85;
+  bodyGroup.add(pelvis);
+
+  // Cintura (Cilindro que conecta torso y cadera)
+  const waistGeo = new THREE.CylinderGeometry(0.15, 0.2, 0.35, 16);
+  const waist = new THREE.Mesh(waistGeo, mat);
+  waist.position.y = 1.1;
+  bodyGroup.add(waist);
+
+  // Torso superior / Pecho (Esfera estirada para forma orgánica)
+  const chestGeo = new THREE.SphereGeometry(0.2, 16, 16);
+  const chest = new THREE.Mesh(chestGeo, mat);
+  chest.scale.set(1.0, 1.25, 0.85);
+  chest.position.y = 1.35;
+  bodyGroup.add(chest);
+
+  // Cuello
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.15, 8), mat);
+  neck.position.y = 1.62;
+  bodyGroup.add(neck);
+
+  // Cabeza
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 16), mat);
+  head.position.y = 1.83;
+  bodyGroup.add(head);
+
+  // Pelo largo y ondulado (Masa de pelo suelto cayendo sobre la espalda y hombros)
+  const hairGroup = new THREE.Group();
+
+  // Volumen en la nuca
+  const hairBase = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 16), mat);
+  hairBase.scale.set(1.2, 0.9, 1.1);
+  hairBase.position.set(0, 1.75, -0.08);
+  hairGroup.add(hairBase);
+
+  // Mechón central ancho (espalda)
+  const strandMain = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.25, 0.65, 16), mat);
+  strandMain.scale.set(1, 1, 0.4); // Aplanado para que sea manto, no tubo
+  strandMain.position.set(0, 1.45, -0.16);
+  strandMain.rotation.x = 0.15;
+  hairGroup.add(strandMain);
+
+  // Mechones laterales (cubriendo parcialmente los hombros)
+  const strandLeft = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.18, 0.55, 16), mat);
+  strandLeft.scale.set(1, 1, 0.5);
+  strandLeft.position.set(-0.16, 1.45, -0.12);
+  strandLeft.rotation.x = 0.12;
+  strandLeft.rotation.z = 0.15; // Cae hacia afuera
+  hairGroup.add(strandLeft);
+
+  const strandRight = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.18, 0.55, 16), mat);
+  strandRight.scale.set(1, 1, 0.5);
+  strandRight.position.set(0.16, 1.45, -0.12);
+  strandRight.rotation.x = 0.12;
+  strandRight.rotation.z = -0.15; // Cae hacia afuera
+  hairGroup.add(strandRight);
+
+  bodyGroup.add(hairGroup);
+
+  // Hombros (Más estrechos, redondeados y ligeramente caídos)
+  const shoulderGeo = new THREE.SphereGeometry(0.09, 8, 8);
+  const leftShoulder = new THREE.Mesh(shoulderGeo, mat);
+  leftShoulder.position.set(-0.21, 1.43, 0);
+  const rightShoulder = new THREE.Mesh(shoulderGeo, mat);
+  rightShoulder.position.set(0.21, 1.43, 0);
+  bodyGroup.add(leftShoulder, rightShoulder);
+
+  // Brazo Izquierdo (Más largo y delgado)
+  const armGeo = new THREE.CylinderGeometry(0.045, 0.035, 0.65, 8);
+  const leftArm = new THREE.Mesh(armGeo, mat);
+  leftArm.position.set(-0.25, 1.1, 0);
+  leftArm.rotation.z = -0.12;
+  bodyGroup.add(leftArm);
+
+  // Brazo Derecho (Pivotable)
+  figure.armPivot = new THREE.Group();
+  figure.armPivot.position.set(0.21, 1.43, 0); // Hombro derecho
+  const rightArm = new THREE.Mesh(armGeo, mat);
+  rightArm.position.set(0, -0.32, 0);
+  rightArm.rotation.z = 0.12;
+  figure.armPivot.add(rightArm);
+  bodyGroup.add(figure.armPivot);
+
+  // Piernas (Más largas para mayor altura)
+  const legGeo = new THREE.CylinderGeometry(0.08, 0.05, 0.8, 8);
+  const leftLeg = new THREE.Mesh(legGeo, mat);
+  leftLeg.position.set(-0.11, 0.4, 0);
+  const rightLeg = new THREE.Mesh(legGeo, mat);
+  rightLeg.position.set(0.11, 0.4, 0);
+  bodyGroup.add(leftLeg, rightLeg);
+
+  // Vestido sutil / Túnica translúcida inferior para unificar la silueta
+  const skirtGeo = new THREE.ConeGeometry(0.35, 1.0, 16, 1, true);
+  const skirt = new THREE.Mesh(skirtGeo, mat);
+  skirt.position.y = 0.4;
+  // Aumentar la altura y tamaño general de la figura para hacerla imponente
+  bodyGroup.scale.set(1.2, 1.35, 1.2);
+
+  figure.group.add(bodyGroup);
+
+  // Aura volumétrica (Un solo Sprite de halo)
+  const canvas = document.createElement('canvas');
+  canvas.width = 128; canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  const grd = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grd.addColorStop(0, `rgba(170, 136, 255, 0.15)`); // #aa88ff
+  grd.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, 128, 128);
+
+  const spriteMat = new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(canvas),
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    depthWrite: false,
+    color: new THREE.Color(0xaa88ff)
+  });
+  const sprite = new THREE.Sprite(spriteMat);
+  sprite.scale.set(16, 16, 1); // Tamaño base
+  sprite.position.set(0, 2.0, -0.5); // Ligeramente más alto por el escalado
+  figure.haloSprite = sprite; // Guardar referencia para animar
+  figure.haloBaseColor = new THREE.Color(0xaa88ff); // Color base para intensificar
+  figure.group.add(sprite);
 
   // Partículas blancas de estallido (Climax)
   const burstGeo = new THREE.BufferGeometry();
@@ -368,13 +505,13 @@ function setupPostprocessing(manager, sunMesh) {
   const renderPass = new RenderPass(manager.scene, manager.camera);
   composer.addPass(renderPass);
 
-  // Bloom selectivo para los halos de la figura
-  effects.bloom = new SelectiveBloomEffect(manager.scene, manager.camera, {
-    intensity: 6.0,
-    luminanceThreshold: 0.0,
-    luminanceSmoothing: 0.1
+  // UnrealBloom Pass Global
+  effects.bloom = new BloomEffect({
+    luminanceThreshold: 0.4,
+    intensity: 1.8,
+    mipmapBlur: true,
+    luminanceSmoothing: 0.2
   });
-  figure.halos.forEach(h => effects.bloom.selection.add(h));
 
   // God Rays desde el sol (Hiper Realistas)
   effects.godRays = new GodRaysEffect(manager.camera, sunMesh, {
@@ -392,12 +529,14 @@ function setupPostprocessing(manager, sunMesh) {
     bokehScale: 5.0
   });
 
-  // Glitch Extremo para el climax
+  // Glitch Extremo para el climax + sutil de ambiente
   effects.aberration = new ChromaticAberrationEffect();
-  effects.aberration.offset = new THREE.Vector2(0, 0);
+  effects.aberration.offset = new THREE.Vector2(0.0008, 0.0008);
 
   effects.noise = new NoiseEffect({ blendFunction: BlendFunction.OVERLAY });
   effects.noise.blendMode.opacity.value = 0;
+
+  effects.vignette = new VignetteEffect({ darkness: 0.4 });
 
   const effectPass = new EffectPass(
     manager.camera,
@@ -405,6 +544,7 @@ function setupPostprocessing(manager, sunMesh) {
     effects.godRays,
     effects.dof,
     effects.aberration,
+    effects.vignette,
     effects.noise
   );
   composer.addPass(effectPass);
@@ -420,7 +560,7 @@ function setupAudio() {
 
     // Pad Cálido (Acorde Majestuoso)
     state.padGain = ctx.createGain();
-    state.padGain.gain.value = 0.4;
+    state.padGain.gain.value = 0.05; // Volumen ultra reducido
     state.padGain.connect(ctx.destination);
 
     const freqs = [196.00, 246.94, 293.66, 392.00]; // G Major 7th
@@ -436,7 +576,12 @@ function setupAudio() {
       const oscGain = ctx.createGain();
       oscGain.gain.value = 0.25;
 
-      lfo.connect(oscGain.gain);
+      const lfoGain = ctx.createGain();
+      lfoGain.gain.value = 0.15; // Escalar modulación para que no clipee
+
+      lfo.connect(lfoGain);
+      lfoGain.connect(oscGain.gain);
+
       osc.connect(oscGain);
       oscGain.connect(state.padGain);
 
@@ -460,7 +605,7 @@ function setupAudio() {
     filter.frequency.value = 300;
 
     state.noiseGain = ctx.createGain();
-    state.noiseGain.gain.value = 0.2;
+    state.noiseGain.gain.value = 0.05; // Volumen ultra reducido
 
     noiseSrc.connect(filter);
     filter.connect(state.noiseGain);
@@ -512,6 +657,21 @@ export function update(deltaTime, manager) {
   const dx = manager.camera.position.x - figure.group.position.x;
   const dz = manager.camera.position.z - figure.group.position.z;
   const dist2D = Math.sqrt(dx * dx + dz * dz);
+
+  // Aumentar intensidad cegadora del halo al acercarse
+  if (figure.haloSprite && figure.haloBaseColor) {
+    const progress = THREE.MathUtils.clamp((50 - dist2D) / 45, 0, 1);
+
+    // Curva exponencial fuerte para que el brillo explote al final
+    const intensity = 1.0 + Math.pow(progress, 4.0) * 100.0;
+
+    // Multiplicamos el color base para que el BloomEffect sature y ciegue al jugador
+    figure.haloSprite.material.color.copy(figure.haloBaseColor).multiplyScalar(intensity);
+
+    // El tamaño también acompaña un poco para envolver la visión
+    const targetScale = 16 + Math.pow(progress, 2.0) * 8;
+    figure.haloSprite.scale.lerp(new THREE.Vector3(targetScale, targetScale, 1), deltaTime * 3);
+  }
 
   if (!isMoving && dist2D > 3) {
     // Se acerca si no te mueves

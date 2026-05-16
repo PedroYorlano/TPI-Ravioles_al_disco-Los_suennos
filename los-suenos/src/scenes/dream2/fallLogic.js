@@ -6,6 +6,7 @@ export function createFallController(camera, options = {}) {
     startY = 560,
     startZ = 100,
     startDelay = 0.3,
+    climaxY = 50,
     impactY = 20,
     maxSpeed = 120,
     fallDuration = 10
@@ -15,6 +16,7 @@ export function createFallController(camera, options = {}) {
     elapsed: 0,
     falling: false,
     speed: 0,
+    climaxReached: false,
     impacted: false,
     swayTime: 0
   };
@@ -31,7 +33,7 @@ export function createFallController(camera, options = {}) {
         state.falling = true;
       }
 
-      let justImpacted = false;
+      let justReachedClimax = false;
 
       if (state.falling && !state.impacted) {
         const fallTime = state.elapsed - startDelay;
@@ -46,21 +48,25 @@ export function createFallController(camera, options = {}) {
         // Movimiento horizontal muy limitado (casi sin sway constante, lo reemplazaremos con WASD)
         state.swayTime += deltaTime;
         const swayAmount = 0.005 + speedNorm * 0.003;
-        
+
         // Efecto de vibración en la caída
         camera.position.x += (Math.random() - 0.5) * swayAmount;
         camera.position.z += (Math.random() - 0.5) * swayAmount;
 
+        if (camera.position.y <= climaxY && !state.climaxReached) {
+          state.climaxReached = true;
+          justReachedClimax = true;
+        }
+
         if (camera.position.y <= impactY) {
           state.impacted = true;
-          justImpacted = true;
         }
 
         return {
           falling: state.falling,
           speed: state.speed,
           speedNorm,
-          justImpacted
+          justReachedClimax
         };
       }
 
@@ -68,7 +74,7 @@ export function createFallController(camera, options = {}) {
         falling: state.falling,
         speed: state.speed,
         speedNorm: THREE.MathUtils.clamp(state.speed / maxSpeed, 0, 1),
-        justImpacted
+        justReachedClimax
       };
     }
   };

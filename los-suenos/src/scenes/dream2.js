@@ -86,6 +86,7 @@ export async function init(manager) {
     startY: 650,
     startZ: 200,
     startDelay: 0.3,
+    climaxY: 50,
     impactY: 20,
     maxSpeed: 120,
     fallDuration: 10
@@ -122,7 +123,7 @@ export function update(deltaTime, manager) {
   const blur = Math.min(lateImpactFactor * (0.018 + fall.speedNorm * 0.05), 0.085);
   motionBlurEffect.uniforms.get('strength').value = blur;
 
-  if (fall.justImpacted) {
+  if (fall.justReachedClimax) {
     triggerClimax(manager);
   }
 }
@@ -135,13 +136,12 @@ function triggerClimax(manager) {
   state.climaxTriggered = true;
 
   if (state.audio) {
-    state.audio.playImpact();
+    state.audio.fadeOut(); // Fade out del viento en lugar de sonido de impacto
   }
 
-  // Impacto justo antes del fade estándar del SceneManager.
-  state.transitionTimer = setTimeout(() => {
-    manager.transitionTo('hub');
-  }, 120);
+  // Comienza el fade a negro y transiciona al hub inmediatamente (el fade toma 1 segundo)
+  // Mientras tanto, la cámara seguirá cayendo, por lo que el usuario verá oscurecerse todo mientras se acerca al suelo
+  manager.transitionTo('hub');
 }
 
 export function dispose(manager) {

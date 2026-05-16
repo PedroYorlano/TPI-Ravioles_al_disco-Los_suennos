@@ -88,6 +88,18 @@ export async function createDream2Audio(camera) {
         whooshCooldown = 0.24;
       }
     },
+    fadeOut() {
+      // Detiene los sonidos violentos y permite un fundido silencioso
+      if (wind.isPlaying) {
+        wind.setVolume(0.01);
+      }
+      if (whoosh.isPlaying) {
+        whoosh.stop();
+      }
+      if (impact.isPlaying) {
+        impact.stop();
+      }
+    },
     playImpact() {
       if (wind.isPlaying) {
         wind.stop();
