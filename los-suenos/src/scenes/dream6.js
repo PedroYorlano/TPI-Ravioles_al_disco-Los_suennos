@@ -69,8 +69,8 @@ export async function init(manager) {
     state.mirrorCam = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
 
     state.mirrorScene = new THREE.Scene();
-    state.mirrorScene.background = new THREE.Color(0x020204);
-    state.mirrorScene.fog = new THREE.Fog(0x020204, 2, 18);
+    state.mirrorScene.background = new THREE.Color(0x030308);
+    state.mirrorScene.fog = new THREE.Fog(0x030308, 5, 20);
 
     // --- Mundo Reflejado (Hub Room) ---
     const roomGroup = new THREE.Group();
@@ -176,21 +176,93 @@ export async function init(manager) {
     tableGroup.position.set(2.1, 0, -0.6);
     roomGroup.add(tableGroup);
 
-    // Figura durmiendo
-    const figureGeo = new THREE.CapsuleGeometry(0.2, 0.8, 4, 8);
+    // Figura durmiendo (silueta humana con primitivas)
     const figureMat = new THREE.MeshStandardMaterial({ color: 0x778899 });
-    const figure = new THREE.Mesh(figureGeo, figureMat);
-    figure.rotation.x = Math.PI / 2;
-    figure.position.set(0, 0.6, 0); // Sobre la cama
-    bedGroup.add(figure);
-    state.mirrorFigure = figure; // Para aplicar glitch
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xd4a574, roughness: 0.8 });
 
-    state.figureLight = new THREE.PointLight(0xffaa66, 1.0, 8);
+    // Cabeza sobre la almohada
+    const headGeo = new THREE.SphereGeometry(0.12, 12, 12);
+    const head = new THREE.Mesh(headGeo, skinMat);
+    head.scale.set(1, 0.9, 1);
+    head.position.set(0.05, 0.62, 0.65);
+    bedGroup.add(head);
+
+    // Pelo
+    const hairGeo = new THREE.SphereGeometry(0.13, 12, 12);
+    const hairMat = new THREE.MeshStandardMaterial({ color: 0x1a1008 });
+    const hair = new THREE.Mesh(hairGeo, hairMat);
+    hair.scale.set(1, 0.8, 1);
+    hair.position.set(0.05, 0.65, 0.68);
+    bedGroup.add(hair);
+
+    // Torso (de costado, tapado parcialmente por la sábana)
+    const torsoGeo = new THREE.CapsuleGeometry(0.15, 0.4, 4, 8);
+    const torso = new THREE.Mesh(torsoGeo, figureMat);
+    torso.rotation.x = Math.PI / 2;
+    torso.rotation.z = 0.15; // Leve inclinación lateral
+    torso.position.set(0.05, 0.6, 0.25);
+    bedGroup.add(torso);
+
+    // Brazo visible (sobre la sábana)
+    const armGeo = new THREE.CapsuleGeometry(0.04, 0.3, 4, 8);
+    const arm = new THREE.Mesh(armGeo, skinMat);
+    arm.rotation.x = Math.PI / 2;
+    arm.rotation.z = -0.3;
+    arm.position.set(-0.15, 0.58, 0.15);
+    bedGroup.add(arm);
+
+    // Piernas (bajo la sábana, se notan como bulto)
+    const legBulge1 = new THREE.CapsuleGeometry(0.1, 0.5, 4, 8);
+    const leg1 = new THREE.Mesh(legBulge1, figureMat);
+    leg1.rotation.x = Math.PI / 2;
+    leg1.position.set(0.1, 0.55, -0.35);
+    bedGroup.add(leg1);
+
+    const leg2 = new THREE.Mesh(legBulge1, figureMat);
+    leg2.rotation.x = Math.PI / 2;
+    leg2.position.set(-0.05, 0.52, -0.4);
+    bedGroup.add(leg2);
+
+    // Sábana/Manta cubriendo el cuerpo (caja suave con leve elevación)
+    const blanketCoverGeo = new THREE.BoxGeometry(1.3, 0.08, 1.4);
+    const blanketCoverMat = new THREE.MeshStandardMaterial({ color: 0x1f2e4d, roughness: 0.85 });
+    const blanketCover = new THREE.Mesh(blanketCoverGeo, blanketCoverMat);
+    blanketCover.position.set(0, 0.57, 0);
+    blanketCover.rotation.z = 0.02; // Leve inclinación natural
+    bedGroup.add(blanketCover);
+
+    state.mirrorFigure = head; // Para aplicar glitch
+
+    state.figureLight = new THREE.PointLight(0xffaa66, 1.5, 10);
     state.figureLight.position.set(1.6, 1.5, 0.8);
     roomGroup.add(state.figureLight);
+
+    // Luz tenue del techo (simula lámpara apagada con algo de brillo residual)
+    const ceilingLight = new THREE.PointLight(0x334466, 0.4, 8);
+    ceilingLight.position.set(0, 2.8, 1);
+    roomGroup.add(ceilingLight);
+
+    // Brillo tenue de ventana (luz exterior nocturna entrando)
+    const windowLight = new THREE.RectAreaLight(0x223355, 0.6, 1.2, 1.5);
+    windowLight.position.set(-2.49, 1.8, 1.0);
+    windowLight.rotation.y = Math.PI / 2;
+    roomGroup.add(windowLight);
+
+    // Marca de ventana en la pared izquierda (rectángulo emisivo)
+    const windowGeo = new THREE.PlaneGeometry(1.0, 1.3);
+    const windowMat = new THREE.MeshStandardMaterial({
+      color: 0x112244,
+      emissive: 0x112244,
+      emissiveIntensity: 0.8,
+      roughness: 0.3
+    });
+    const windowMesh = new THREE.Mesh(windowGeo, windowMat);
+    windowMesh.rotation.y = Math.PI / 2;
+    windowMesh.position.set(-2.48, 1.8, 1.0);
+    roomGroup.add(windowMesh);
     
     state.mirrorScene.add(roomGroup);
-    state.mirrorScene.add(new THREE.AmbientLight(0x111122, 0.5));
+    state.mirrorScene.add(new THREE.AmbientLight(0x1a1a2e, 0.6));
 
     // --- Mundo Real (El Espacio Vacío) ---
 
@@ -271,8 +343,7 @@ export async function init(manager) {
         z-index: 100;
         line-height: 1.5;
         text-shadow: 0 0 20px rgba(255, 0, 0, 0.8), 0 0 40px rgba(0, 0, 0, 1);
-        opacity: 0;
-        transition: opacity 3s ease-in-out;
+        opacity: 1;
         letter-spacing: 2px;
     `;
     text1.innerHTML = '¿Se terminó?';
@@ -296,7 +367,6 @@ export async function init(manager) {
         line-height: 1.5;
         text-shadow: 0 0 20px rgba(255, 0, 0, 0.8), 0 0 40px rgba(0, 0, 0, 1);
         opacity: 0;
-        transition: opacity 3s ease-in-out;
         letter-spacing: 2px;
     `;
     text2.innerHTML = 'Y... ¿Si nunca comenzó?';
@@ -417,25 +487,27 @@ export function update(deltaTime, manager) {
   state.floorMat.uniforms.time.value = state.timeElapsed;
   state.wallsMat.uniforms.time.value = state.timeElapsed;
 
-  // --- Control de textos con timing ---
-  // Mensaje 1: aparece en segundo 2, desaparece en segundo 9 (fade out 3s: 6-9)
-  if (state.timeElapsed >= 2 && state.timeElapsed < 6) {
-    state.text1.style.opacity = '1'; // Visible y fijo
-  } else if (state.timeElapsed >= 6 && state.timeElapsed < 9) {
-    // Fade out durante 3 segundos
-    const fadeProgress = (state.timeElapsed - 6) / 3;
-    state.text1.style.opacity = String(1 - fadeProgress);
-  } else if (state.timeElapsed >= 9) {
-    state.text1.style.opacity = '0';
-  }
+  // --- Control de textos según posición del jugador ---
+  const pz = manager.camera.position.z;
   
-  // Mensaje 2: aparece en segundo 9 (fade in 3s: 6-9)
-  if (state.timeElapsed >= 6 && state.timeElapsed < 9) {
-    // Fade in durante 3 segundos (desde 6 a 9)
-    const fadeProgress = (state.timeElapsed - 6) / 3;
-    state.text2.style.opacity = String(fadeProgress);
-  } else if (state.timeElapsed >= 9) {
-    state.text2.style.opacity = '1'; // Visible y fijo
+  // Texto 1: visible al inicio, fade out cuando el jugador baja de Z=10
+  if (pz >= 10) {
+    state.text1.style.opacity = '1';
+    state.text2.style.opacity = '0';
+  } else if (pz >= 7) {
+    // Fade out texto 1, fade in texto 2 (entre Z=10 y Z=7)
+    const t = (10 - pz) / 3; // 0 en Z=10, 1 en Z=7
+    state.text1.style.opacity = String(1 - t);
+    state.text2.style.opacity = String(t);
+  } else if (pz >= 4) {
+    // Texto 2 visible, fade out al seguir avanzando
+    const t = (7 - pz) / 3; // 0 en Z=7, 1 en Z=4
+    state.text1.style.opacity = '0';
+    state.text2.style.opacity = String(1 - t);
+  } else {
+    // Ambos textos ocultos — el espejo queda visible
+    state.text1.style.opacity = '0';
+    state.text2.style.opacity = '0';
   }
 
   if (state.climaxTriggered) {
@@ -504,6 +576,23 @@ export function update(deltaTime, manager) {
 
     if (distance < 0.6) {
       state.climaxTriggered = true;
+    }
+
+    // Fade out del audio externo durante la distorsión
+    if (state.bgMusic && !state.audioFadingOut) {
+      state.audioFadingOut = true;
+      state.bgMusic.fade(state.bgMusic.volume(), 0, 1500); // Fade 1.5s
+    }
+    if (state.audioElement && !state.audioElementFading) {
+      state.audioElementFading = true;
+      const fadeInterval = setInterval(() => {
+        if (state.audioElement && state.audioElement.volume > 0.02) {
+          state.audioElement.volume = Math.max(0, state.audioElement.volume - 0.03);
+        } else {
+          if (state.audioElement) state.audioElement.volume = 0;
+          clearInterval(fadeInterval);
+        }
+      }, 50);
     }
   }
 
