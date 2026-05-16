@@ -49,13 +49,19 @@ export async function init(manager) {
     riserSource: null,
     riserGain: null,
     riserTimeout: null,
-    noise2D: createNoise2D()
+    noise2D: createNoise2D(),
+    manager: manager
   };
 
   manager.camera.position.set(0, 0, 0);
   manager.camera.rotation.set(0, 0, 0);
   manager.scene.background = new THREE.Color(0x000000);
   manager.scene.fog = null; // Sin niebla en el espacio
+
+  // Extender el plano de recorte para que los planetas lejanos sean visibles
+  state.originalFar = manager.camera.far;
+  manager.camera.far = 2000;
+  manager.camera.updateProjectionMatrix();
 
   // Grupo global para implosión final
   state.universeGroup = new THREE.Group();
@@ -93,7 +99,7 @@ export async function init(manager) {
 }
 
 function createSky() {
-  const skyGeo = new THREE.SphereGeometry(400, 64, 64);
+  const skyGeo = new THREE.SphereGeometry(1000, 64, 64);
   materials.sky = new THREE.ShaderMaterial({
     uniforms: {
       time: { value: 0 },
@@ -295,7 +301,7 @@ async function createPlanets() {
     `
   });
   const gasPlanet = new THREE.Mesh(new THREE.SphereGeometry(60, 64, 64), gasMat);
-  gasPlanet.position.set(120, 40, -250);
+  gasPlanet.position.set(300, 100, -625);
   state.planets.push({ mesh: gasPlanet, mat: gasMat, speed: 0.05 });
   state.universeGroup.add(gasPlanet);
 
@@ -322,7 +328,7 @@ async function createPlanets() {
     `
   });
   const rockPlanet = new THREE.Mesh(new THREE.SphereGeometry(25, 64, 64), rockMat);
-  rockPlanet.position.set(-150, -60, 200);
+  rockPlanet.position.set(-375, -150, 500);
   state.planets.push({ mesh: rockPlanet, mat: rockMat, speed: -0.08 });
   state.universeGroup.add(rockPlanet);
 
@@ -340,7 +346,7 @@ async function createPlanets() {
   const ring = new THREE.Mesh(ringGeo, ringTexMat);
   ring.rotation.x = Math.PI / 2.2;
   ringPlanet.add(ring);
-  ringPlanet.position.set(-220, 80, -50);
+  ringPlanet.position.set(-550, 200, -125);
 
   // Dummy mat object to sync collapse uniform
   const dummyMat = { uniforms: { time: { value: 0 }, collapse: { value: 0 } } };
@@ -370,31 +376,31 @@ async function createPlanets() {
     `
   });
   const icePlanet = new THREE.Mesh(new THREE.SphereGeometry(35, 64, 64), iceMat);
-  icePlanet.position.set(180, -100, 150);
+  icePlanet.position.set(450, -250, 375);
   state.planets.push({ mesh: icePlanet, mat: iceMat, speed: 0.12 });
   state.universeGroup.add(icePlanet);
 
-  // Planetas GLB solicitados: 4 instancias de cada uno con tamaños y distancias distintas.
+  // Planetas GLB: distancias x2.5 para separación dramática
   await Promise.all([
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(420, 140, 60), 0.045, 120),
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(-520, -120, -260), -0.03, 85),
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(220, 260, -420), 0.06, 150),
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(-160, 80, 520), 0.09, 65),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(1050, 350, 150), 0.045, 120),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(-1300, -300, -650), -0.03, 85),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(550, 650, -1050), 0.06, 150),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(-400, 200, 1300), 0.09, 65),
 
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(-360, -90, 260), -0.07, 95),
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(540, 180, -180), 0.05, 130),
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(-220, 320, -520), 0.04, 70),
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(120, -240, 430), -0.08, 160),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(-900, -225, 650), -0.07, 95),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(1350, 450, -450), 0.05, 130),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(-550, 800, -1300), 0.04, 70),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(300, -600, 1075), -0.08, 160),
 
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(320, 70, -280), 0.06, 100),
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(-610, 40, 160), -0.05, 75),
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(260, -220, 500), 0.07, 140),
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(-180, 210, -460), 0.03, 60),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(800, 175, -700), 0.06, 100),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(-1525, 100, 400), -0.05, 75),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(650, -550, 1250), 0.07, 140),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(-450, 525, -1150), 0.03, 60),
 
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(-260, 110, -340), 0.09, 72),
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(580, -150, 220), -0.06, 55),
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(-420, 260, 380), 0.08, 105),
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(180, -300, -560), -0.04, 42)
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(-650, 275, -850), 0.09, 72),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(1450, -375, 550), -0.06, 55),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(-1050, 650, 950), 0.08, 105),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(450, -750, -1400), -0.04, 42)
   ]);
 }
 
@@ -425,6 +431,51 @@ function setupAudio() {
     firstAudio.volume = 0.75;
     state.musicEl = firstAudio;
 
+    // Pre-crear AudioContext y cadena de efectos (se activa con interacción del usuario)
+    const initAudioChain = () => {
+      if (state.audioCtx) return; // Ya inicializado
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        state.audioCtx = ctx;
+
+        // Distorsión creciente (WaveShaper)
+        state.distortion = ctx.createWaveShaper();
+        state.distortion.curve = makeDistortionCurve(0);
+        state.distortion.oversample = '4x';
+
+        // Filtro agudo chirriante
+        state.harshFilter = ctx.createBiquadFilter();
+        state.harshFilter.type = 'highshelf';
+        state.harshFilter.frequency.value = 3000;
+        state.harshFilter.gain.value = 0;
+
+        // Gain del riser
+        state.riserGain = ctx.createGain();
+        state.riserGain.gain.value = 0.9;
+
+        // Ruido blanco (empieza mudo)
+        const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+        const noiseData = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < noiseData.length; i++) noiseData[i] = Math.random() * 2 - 1;
+        state.noiseSource = ctx.createBufferSource();
+        state.noiseSource.buffer = noiseBuffer;
+        state.noiseSource.loop = true;
+        state.noiseGain = ctx.createGain();
+        state.noiseGain.gain.value = 0;
+        state.noiseSource.connect(state.noiseGain).connect(ctx.destination);
+        state.noiseSource.start();
+
+        // Cadena pre-armada: distortion → harshFilter → gain → destination
+        state.distortion.connect(state.harshFilter)
+          .connect(state.riserGain)
+          .connect(ctx.destination);
+      } catch (e) {
+        console.warn('No se pudo inicializar la cadena WebAudio', e);
+      }
+    };
+
     const startRiser = () => {
       if (state.riserEl) return;
 
@@ -433,25 +484,21 @@ function setupAudio() {
       riser.loop = false;
       state.riserEl = riser;
 
-      // El blur final comienza apenas arranca el segundo audio.
+      // El colapso comienza con el riser
       state.collapseStarted = true;
       state.collapseFactor = 0;
 
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (AudioContext) {
+      // Conectar el riser a la cadena de efectos pre-armada
+      if (state.audioCtx && state.distortion) {
         try {
-          if (!state.audioCtx) state.audioCtx = new AudioContext();
           const ctx = state.audioCtx;
-          if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+          if (ctx.state === 'suspended') ctx.resume().catch(() => { });
           const source = ctx.createMediaElementSource(riser);
-          const gain = ctx.createGain();
-          gain.gain.value = 0.9;
-          source.connect(gain).connect(ctx.destination);
+          source.connect(state.distortion); // Entra en la cadena ya conectada
           state.riserSource = source;
-          state.riserGain = gain;
         } catch (e) {
           riser.volume = 0.9;
-          console.warn('No se pudo usar WebAudio para el riser; usando volumen nativo', e);
+          console.warn('WebAudio falló para el riser, usando volumen nativo', e);
         }
       } else {
         riser.volume = 0.9;
@@ -493,13 +540,14 @@ function setupAudio() {
 
     const tryPlay = () => {
       if (!state.musicEl) return;
-      state.musicEl.play().catch(() => {});
+      state.musicEl.play().catch(() => { });
     };
 
     // Intento inicial + desbloqueo por interacción (autoplay policy)
     tryPlay();
     const unlockAudio = () => {
       tryPlay();
+      initAudioChain(); // Crear AudioContext con gesto de usuario
       document.removeEventListener('click', unlockAudio);
       document.removeEventListener('keydown', unlockAudio);
     };
@@ -509,6 +557,22 @@ function setupAudio() {
   } catch (e) {
     console.warn("Audio error", e);
   }
+}
+
+function makeDistortionCurve(amount) {
+  const k = typeof amount === 'number' ? amount : 50;
+  const n_samples = 44100;
+  const curve = new Float32Array(n_samples);
+  const deg = Math.PI / 180;
+  for (let i = 0; i < n_samples; ++i) {
+    const x = (i * 2) / n_samples - 1;
+    if (k === 0) {
+      curve[i] = x;
+    } else {
+      curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+    }
+  }
+  return curve;
 }
 
 export function update(deltaTime, manager) {
@@ -533,22 +597,13 @@ export function update(deltaTime, manager) {
   if (keys.e) accel.add(up);
   if (keys.q) accel.sub(up);
 
-  // Colapso altera el control
-  if (state.timeElapsed > 25 && !state.collapseStarted) {
-    state.collapseStarted = true;
-  }
-
-  if (state.collapseStarted) {
-    state.collapseFactor += deltaTime * 0.1; // Sube de 0 a 1 en 10s
-    if (state.collapseFactor > 1.0) {
-      state.collapseFactor = 1.0;
-      triggerClimax(manager);
-    }
-  }
+  // El colapso lo maneja exclusivamente el Riser (setupAudio).
+  // collapseFactor se actualiza en el timeupdate del riser audio.
+  // Cuando el riser termina, su 'ended' event llama a triggerClimax.
 
   // Inercia normal vs Inercia de colapso (pierde control)
-  const friction = THREE.MathUtils.lerp(0.95, 0.995, state.collapseFactor);
-  const inputStrength = THREE.MathUtils.lerp(15.0, 2.0, state.collapseFactor);
+  const friction = THREE.MathUtils.lerp(0.97, 0.995, state.collapseFactor);
+  const inputStrength = THREE.MathUtils.lerp(60.0, 2.0, state.collapseFactor);
 
   if (accel.lengthSq() > 0) {
     accel.normalize().multiplyScalar(inputStrength * deltaTime);
@@ -580,11 +635,27 @@ export function update(deltaTime, manager) {
     }
   });
 
-  // 3. Blur final / colapso visual sincronizado con el riser
+  // 3. Blur final / colapso visual y sonoro sincronizado con el riser
   if (state.collapseStarted) {
     effects.noise.blendMode.opacity.value = state.collapseFactor * 0.5;
     if (effects.bloom) {
       effects.bloom.intensity = 2.0 + state.collapseFactor * 2.0;
+    }
+
+    // Distorsión de audio creciente
+    if (state.distortion) {
+      const distAmount = Math.pow(state.collapseFactor, 2) * 200;
+      state.distortion.curve = makeDistortionCurve(distAmount);
+    }
+    // Filtro agudo: los últimos 40% del riser acentúan agudos chirriantes
+    if (state.harshFilter) {
+      const shelfGain = Math.max(0, (state.collapseFactor - 0.6) / 0.4) * 25;
+      state.harshFilter.gain.value = shelfGain;
+    }
+    // Ruido blanco: sube en el último 50% del riser
+    if (state.noiseGain) {
+      const noiseVol = Math.max(0, (state.collapseFactor - 0.5) / 0.5) * 0.35;
+      state.noiseGain.gain.value = noiseVol;
     }
   }
 }
@@ -592,6 +663,14 @@ export function update(deltaTime, manager) {
 function triggerClimax(manager) {
   state.climaxTriggered = true;
   state.climaxTimer = 0;
+
+  // Silencio total antes del negro
+  if (state.riserGain && state.audioCtx) {
+    state.riserGain.gain.linearRampToValueAtTime(0, state.audioCtx.currentTime + 0.15);
+  }
+  if (state.noiseGain && state.audioCtx) {
+    state.noiseGain.gain.linearRampToValueAtTime(0, state.audioCtx.currentTime + 0.15);
+  }
 
   // Parálisis
   state.velocity.set(0, 0, 0);
@@ -622,6 +701,12 @@ export function dispose(manager) {
   const ui = document.getElementById('dream5-ui');
   if (ui) ui.remove();
 
+  // Restaurar el far plane original de la cámara
+  if (state.originalFar) {
+    manager.camera.far = state.originalFar;
+    manager.camera.updateProjectionMatrix();
+  }
+
   if (manager.composer) {
     manager.composer.dispose();
     manager.composer = null;
@@ -649,12 +734,33 @@ export function dispose(manager) {
   }
 
   if (state.riserSource) {
-    try { state.riserSource.disconnect(); } catch (e) {}
+    try { state.riserSource.disconnect(); } catch (e) { }
     state.riserSource = null;
   }
 
   if (state.riserGain) {
-    try { state.riserGain.disconnect(); } catch (e) {}
+    try { state.riserGain.disconnect(); } catch (e) { }
     state.riserGain = null;
+  }
+
+  if (state.distortion) {
+    try { state.distortion.disconnect(); } catch (e) { }
+    state.distortion = null;
+  }
+
+  if (state.harshFilter) {
+    try { state.harshFilter.disconnect(); } catch (e) { }
+    state.harshFilter = null;
+  }
+
+  if (state.noiseSource) {
+    try { state.noiseSource.stop(); } catch (e) { }
+    try { state.noiseSource.disconnect(); } catch (e) { }
+    state.noiseSource = null;
+  }
+
+  if (state.noiseGain) {
+    try { state.noiseGain.disconnect(); } catch (e) { }
+    state.noiseGain = null;
   }
 }
