@@ -19,7 +19,7 @@ let figure = {};
 let effects = {};
 let noise2D;
 
-let keys = { w: false, a: false, s: false, d: false };
+let keys = { w: false, a: false, s: false, d: false, shift: false };
 
 const keydownListener = (e) => {
   const key = e.key.toLowerCase();
@@ -51,6 +51,27 @@ export async function init(manager) {
   manager.camera.position.set(0, 1.8, 0);
   manager.camera.rotation.set(0, 0, 0);
   manager.scene.background = new THREE.Color(0x050110);
+
+  // Mensaje flotante de instrucción
+  const textOverlay = document.createElement('div');
+  textOverlay.id = 'dream4-run-msg';
+  textOverlay.style.cssText = `
+    position: fixed;
+    bottom: 20%;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Georgia', serif;
+    font-size: 20px;
+    color: #ffd7b5;
+    text-shadow: 0 0 8px rgba(0,0,0,0.8), 0 0 16px rgba(255, 102, 0, 0.4);
+    pointer-events: none;
+    z-index: 100;
+    opacity: 1;
+    transition: opacity 2s ease-out;
+  `;
+  textOverlay.innerHTML = "Presiona SHIFT para correr";
+  document.body.appendChild(textOverlay);
+  state.runMsg = textOverlay;
 
   // Niebla atmosférica volumétrica (cálida, coincide con horizonte Y=0.0)
   manager.scene.fog = new THREE.FogExp2(0xff6633, 0.008);
@@ -639,8 +660,22 @@ export function update(deltaTime, manager) {
   }
   state.dust.geometry.attributes.position.needsUpdate = true;
 
+  // Desaparecer mensaje instruccional después de 5 segundos
+  if (state.timeElapsed > 5 && state.runMsg) {
+    state.runMsg.style.opacity = '0';
+    setTimeout(() => {
+      if (state.runMsg && state.runMsg.parentNode) {
+        state.runMsg.parentNode.removeChild(state.runMsg);
+      }
+      state.runMsg = null;
+    }, 2000);
+  }
+
   // Movimiento Jugador
-  const speed = 2.5 * deltaTime;
+  let speed = 2.5 * deltaTime;
+  if (keys.shift && keys.w) {
+    speed *= 2.5; // Multiplicador de sprint
+  }
   const isMoving = keys.w || keys.a || keys.s || keys.d;
 
   if (keys.w) manager.controls.moveForward(speed);
@@ -752,6 +787,11 @@ function updateClimax(deltaTime, manager) {
 export function dispose(manager) {
   window.removeEventListener('keydown', keydownListener);
   window.removeEventListener('keyup', keyupListener);
+
+  if (state.runMsg && state.runMsg.parentNode) {
+    state.runMsg.parentNode.removeChild(state.runMsg);
+    state.runMsg = null;
+  }
 
   if (manager.composer) {
     manager.composer.dispose();
