@@ -7,6 +7,9 @@ const FOOTSTEP_WATER_AUDIO_STRETCH = 0.82;
 const FOOTSTEP_WATER_AUDIO_BLOOM_CUTOFF = 950;
 const FOOTSTEP_WATER_AUDIO_DRY_GAIN = 0.55;
 const FOOTSTEP_WATER_AUDIO_WET_GAIN = 0.42;
+const FINAL_SCREAM_AUDIO_SRC = '/assets/Sonido Grito de Hombre 5 - Efecto de Sonido.mp3';
+const FINAL_SCREAM_LEAD_SECONDS = 3;
+const FINAL_SCREAM_LEAD_DISTANCE = 6 * FINAL_SCREAM_LEAD_SECONDS;
 
 let seaMesh;
 let waveMesh;
@@ -16,6 +19,7 @@ let waterMaterial;
 let footstepWaterBuffer;
 let footstepWaterBufferPromise;
 let footstepWaterReverb;
+let finalScreamAudio;
 let keys = { w: false, a: false, s: false, d: false };
 let keydownListener, keyupListener;
 
@@ -28,6 +32,7 @@ export function init(manager) {
     shakeIntensity: 0,
     initialCameraY: 0.6, // Agua hasta las rodillas
     lastSplashTime: 0,
+    screamPlayed: false,
     ambientOceanSource: null,
     waveEmergingSource: null,
   };
@@ -138,6 +143,9 @@ export function init(manager) {
 
   // Sonido ambient del océano de fondo
   ensureFootstepWaterAudio();
+  finalScreamAudio = new Audio(encodeURI(FINAL_SCREAM_AUDIO_SRC));
+  finalScreamAudio.preload = 'auto';
+  finalScreamAudio.load();
 
   playAmbientOceanSound();
 }
@@ -214,6 +222,12 @@ export function update(deltaTime, manager) {
   }
 
   if (state.waveActive && !state.impacted) {
+    const predictedWaveZ = waveMesh.position.z + 6 * deltaTime;
+    if (!state.screamPlayed && predictedWaveZ >= manager.camera.position.z - FINAL_SCREAM_LEAD_DISTANCE) {
+      playFinalScreamSound();
+      state.screamPlayed = true;
+    }
+
     waveMesh.position.z += 6 * deltaTime; // Avanza más lento (6 unidades/seg)
 
     const growth = state.timeElapsed - 8;
@@ -472,6 +486,24 @@ function playFootstepSound() {
   }
 }
 
+function playFinalScreamSound() {
+  try {
+    if (!finalScreamAudio) {
+      finalScreamAudio = new Audio(encodeURI(FINAL_SCREAM_AUDIO_SRC));
+      finalScreamAudio.preload = 'auto';
+      finalScreamAudio.load();
+    }
+
+    const screamAudio = finalScreamAudio.cloneNode();
+    screamAudio.currentTime = 0;
+    screamAudio.play().catch((error) => {
+      console.warn('Final scream audio error', error);
+    });
+  } catch (e) {
+    console.warn('Final scream sound error', e);
+  }
+}
+
 function ensureFootstepWaterAudio() {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
   if (!AudioContext) return Promise.resolve(null);
@@ -594,6 +626,11 @@ export function dispose(manager) {
 
   if (state.waveEmergingSource) {
     state.waveEmergingSource.stop();
+  }
+
+  if (finalScreamAudio) {
+    finalScreamAudio.pause();
+    finalScreamAudio.currentTime = 0;
   }
 
   if (audioCtx && audioCtx.state !== 'closed') {
