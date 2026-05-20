@@ -1,11 +1,21 @@
 import * as THREE from 'three';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 
+const FOOTSTEP_WATER_AUDIO_SRC = '/assets/5 Sonidos de Pasos en Agua (Un Paso) - Efecto de Sonido.mp3';
+const FOOTSTEP_WATER_AUDIO_CLIP_DURATION = 1;
+const FOOTSTEP_WATER_AUDIO_STRETCH = 0.82;
+const FOOTSTEP_WATER_AUDIO_BLOOM_CUTOFF = 950;
+const FOOTSTEP_WATER_AUDIO_DRY_GAIN = 0.55;
+const FOOTSTEP_WATER_AUDIO_WET_GAIN = 0.42;
+
 let seaMesh;
 let waveMesh;
 let state;
 let audioCtx;
 let waterMaterial;
+let footstepWaterBuffer;
+let footstepWaterBufferPromise;
+let footstepWaterReverb;
 let keys = { w: false, a: false, s: false, d: false };
 let keydownListener, keyupListener;
 
@@ -127,6 +137,8 @@ export function init(manager) {
   document.body.appendChild(ui);
 
   // Sonido ambient del océano de fondo
+  ensureFootstepWaterAudio();
+
   playAmbientOceanSound();
 }
 
@@ -421,40 +433,100 @@ function playWaveBreakSound() {
 
 function playFootstepSound() {
   try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    if (!audioCtx) audioCtx = new AudioContext();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+    ensureFootstepWaterAudio().then((buffer) => {
+      if (!buffer || !audioCtx) return;
 
-    const now = audioCtx.currentTime;
-    const bufferSize = audioCtx.sampleRate * 0.22; // Corto para un paso
-    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * 0.35;
-    }
+      const now = audioCtx.currentTime;
+      const source = audioCtx.createBufferSource();
+      source.buffer = buffer;
+      source.playbackRate.value = FOOTSTEP_WATER_AUDIO_STRETCH;
 
-    const noise = audioCtx.createBufferSource();
-    noise.buffer = buffer;
+      const blurFilter = audioCtx.createBiquadFilter();
+      blurFilter.type = 'lowpass';
+      blurFilter.frequency.setValueAtTime(FOOTSTEP_WATER_AUDIO_BLOOM_CUTOFF, now);
+      blurFilter.Q.value = 0.8;
 
-    // Bandpass para simular un golpe breve y opaco de pisada
-    const filter = audioCtx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(160 + Math.random() * 120, now); // Variación aleatoria
+      const dryGain = audioCtx.createGain();
+      dryGain.gain.setValueAtTime(FOOTSTEP_WATER_AUDIO_DRY_GAIN, now);
 
-    const gainNode = audioCtx.createGain();
-    gainNode.gain.setValueAtTime(0, now);
-    gainNode.gain.linearRampToValueAtTime(0.22, now + 0.02);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+      const wetGain = audioCtx.createGain();
+      wetGain.gain.setValueAtTime(FOOTSTEP_WATER_AUDIO_WET_GAIN, now);
 
-    noise.connect(filter);
-    filter.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
+      source.connect(blurFilter);
+      blurFilter.connect(dryGain);
+      dryGain.connect(audioCtx.destination);
 
-    noise.start(now);
+      if (footstepWaterReverb) {
+        const wetTap = audioCtx.createGain();
+        wetTap.gain.setValueAtTime(1, now);
+        blurFilter.connect(footstepWaterReverb);
+        footstepWaterReverb.connect(wetTap);
+        wetTap.connect(wetGain);
+        wetGain.connect(audioCtx.destination);
+      }
+
+      source.start(now, 0, FOOTSTEP_WATER_AUDIO_CLIP_DURATION);
+    });
   } catch (e) {
-    console.warn("Splash sound error", e);
+    console.warn('Splash sound error', e);
   }
+}
+
+function ensureFootstepWaterAudio() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return Promise.resolve(null);
+
+  if (!audioCtx) {
+    audioCtx = new AudioContext();
+  }
+
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+
+  if (!footstepWaterReverb) {
+    footstepWaterReverb = createFootstepReverb(audioCtx);
+  }
+
+  if (footstepWaterBuffer) {
+    return Promise.resolve(footstepWaterBuffer);
+  }
+
+  if (!footstepWaterBufferPromise) {
+    footstepWaterBufferPromise = fetch(encodeURI(FOOTSTEP_WATER_AUDIO_SRC))
+      .then((response) => response.arrayBuffer())
+      .then((arrayBuffer) => audioCtx.decodeAudioData(arrayBuffer))
+      .then((decodedBuffer) => {
+        footstepWaterBuffer = decodedBuffer;
+        return decodedBuffer;
+      })
+      .catch((error) => {
+        console.warn('Footstep audio load error', error);
+        footstepWaterBufferPromise = null;
+        return null;
+      });
+  }
+
+  return footstepWaterBufferPromise;
+}
+
+function createFootstepReverb(context) {
+  const duration = 1.2;
+  const impulseLength = Math.floor(context.sampleRate * duration);
+  const impulse = context.createBuffer(2, impulseLength, context.sampleRate);
+
+  for (let channel = 0; channel < impulse.numberOfChannels; channel++) {
+    const channelData = impulse.getChannelData(channel);
+    for (let i = 0; i < impulseLength; i++) {
+      const t = i / impulseLength;
+      const decay = Math.pow(1 - t, 2.8);
+      channelData[i] = (Math.random() * 2 - 1) * decay * 0.65;
+    }
+  }
+
+  const convolver = context.createConvolver();
+  convolver.buffer = impulse;
+  return convolver;
 }
 
 function playAmbientOceanSound() {
