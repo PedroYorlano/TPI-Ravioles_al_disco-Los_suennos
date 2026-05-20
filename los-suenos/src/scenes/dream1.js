@@ -10,6 +10,10 @@ const FOOTSTEP_WATER_AUDIO_WET_GAIN = 0.42;
 const FINAL_SCREAM_AUDIO_SRC = '/assets/Sonido Grito de Hombre 5 - Efecto de Sonido.mp3';
 const FINAL_SCREAM_LEAD_SECONDS = 3;
 const FINAL_SCREAM_LEAD_DISTANCE = 6 * FINAL_SCREAM_LEAD_SECONDS;
+const WAVE_IMPACT_ADVANCE_MS = 1200;
+const WAVE_IMPACT_ADVANCE_DISTANCE = 6 * (WAVE_IMPACT_ADVANCE_MS / 1000);
+const WAVE_IMPACT_AUDIO_SRC = '/assets/San Andreas - My Tsunami sound effects ! (mp3cut.net).mp3';
+const WAVE_IMPACT_FALLBACK_DURATION_MS = 3500;
 
 let seaMesh;
 let waveMesh;
@@ -20,6 +24,8 @@ let footstepWaterBuffer;
 let footstepWaterBufferPromise;
 let footstepWaterReverb;
 let finalScreamAudio;
+let waveImpactAudio;
+let activeWaveImpactAudio;
 let keys = { w: false, a: false, s: false, d: false };
 let keydownListener, keyupListener;
 
@@ -33,6 +39,7 @@ export function init(manager) {
     initialCameraY: 0.6, // Agua hasta las rodillas
     lastSplashTime: 0,
     screamPlayed: false,
+    waveImpactStarted: false,
     ambientOceanSource: null,
     waveEmergingSource: null,
   };
@@ -146,6 +153,9 @@ export function init(manager) {
   finalScreamAudio = new Audio(encodeURI(FINAL_SCREAM_AUDIO_SRC));
   finalScreamAudio.preload = 'auto';
   finalScreamAudio.load();
+  waveImpactAudio = new Audio(encodeURI(WAVE_IMPACT_AUDIO_SRC));
+  waveImpactAudio.preload = 'auto';
+  waveImpactAudio.load();
 
   playAmbientOceanSound();
 }
@@ -223,7 +233,15 @@ export function update(deltaTime, manager) {
 
   if (state.waveActive && !state.impacted) {
     const predictedWaveZ = waveMesh.position.z + 6 * deltaTime;
-    if (!state.screamPlayed && predictedWaveZ >= manager.camera.position.z - FINAL_SCREAM_LEAD_DISTANCE) {
+    const screamTriggerZ = manager.camera.position.z - FINAL_SCREAM_LEAD_DISTANCE;
+    const waveImpactTriggerZ = screamTriggerZ - WAVE_IMPACT_ADVANCE_DISTANCE;
+
+    if (!state.waveImpactStarted && predictedWaveZ >= waveImpactTriggerZ) {
+      playWaveBreakSound();
+      state.waveImpactStarted = true;
+    }
+
+    if (!state.screamPlayed && predictedWaveZ >= screamTriggerZ) {
       playFinalScreamSound();
       state.screamPlayed = true;
     }
@@ -297,10 +315,24 @@ function triggerImpact(manager) {
     gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
   }
 
-  playWaveBreakSound();
+  if (state.waveEmergingSource) {
+    state.waveEmergingSource.stop();
+    state.waveEmergingSource = null;
+  }
+
+  if (!state.waveImpactStarted) {
+    playWaveBreakSound();
+    state.waveImpactStarted = true;
+  }
+
+  const impactDurationMs = activeWaveImpactAudio && Number.isFinite(activeWaveImpactAudio.duration) && activeWaveImpactAudio.duration > 0
+    ? Math.max(0, Math.ceil((activeWaveImpactAudio.duration - activeWaveImpactAudio.currentTime) * 1000))
+    : WAVE_IMPACT_FALLBACK_DURATION_MS;
 
   // Llamar a la transición al HUB
-  manager.transitionTo('hub');
+  window.setTimeout(() => {
+    manager.transitionTo('hub');
+  }, impactDurationMs);
 }
 
 function playWaveEmergingSound() {
@@ -362,86 +394,22 @@ function playWaveEmergingSound() {
 
 function playWaveBreakSound() {
   try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    if (!audioCtx) audioCtx = new AudioContext();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-
-    const now = audioCtx.currentTime;
-
-    // FASE 1: Choque inicial de alta frecuencia (0.8s)
-    const duration1 = 0.8;
-    const bufferSize1 = Math.floor(audioCtx.sampleRate * duration1);
-    const buffer1 = audioCtx.createBuffer(1, bufferSize1, audioCtx.sampleRate);
-    const data1 = buffer1.getChannelData(0);
-
-    // Ruido agresivo con envolvente rápida
-    for (let i = 0; i < bufferSize1; i++) {
-      const t = i / bufferSize1;
-      // Envolvente muy rápida: pico inmediato y decay moderado
-      const envelope = Math.exp(-t * 5.5) * (1 - t * 0.5);
-      data1[i] = (Math.random() * 2 - 1) * envelope * 0.9; // Mayor amplitud
+    if (!waveImpactAudio) {
+      waveImpactAudio = new Audio(encodeURI(WAVE_IMPACT_AUDIO_SRC));
+      waveImpactAudio.preload = 'auto';
+      waveImpactAudio.load();
     }
 
-    const noiseSource1 = audioCtx.createBufferSource();
-    noiseSource1.buffer = buffer1;
+    activeWaveImpactAudio = waveImpactAudio.cloneNode();
+    activeWaveImpactAudio.currentTime = 0;
+    activeWaveImpactAudio.play().catch((error) => {
+      console.warn('Wave impact audio error', error);
+    });
 
-    // Filtro pasa-banda agresivo para alta frecuencia
-    const filter1 = audioCtx.createBiquadFilter();
-    filter1.type = 'bandpass';
-    filter1.frequency.setValueAtTime(3500, now);
-    filter1.frequency.exponentialRampToValueAtTime(1200, now + 0.6);
-    filter1.Q.setValueAtTime(3, now);
-    filter1.Q.exponentialRampToValueAtTime(1, now + 0.8);
-
-    const gain1 = audioCtx.createGain();
-    gain1.gain.setValueAtTime(0, now);
-    gain1.gain.linearRampToValueAtTime(2.5, now + 0.02); // Ataque MÁS AGRESIVO
-    gain1.gain.exponentialRampToValueAtTime(0.3, now + 0.8);
-
-    noiseSource1.connect(filter1);
-    filter1.connect(gain1);
-    gain1.connect(audioCtx.destination);
-    noiseSource1.start(now);
-
-    // FASE 2: Boom grave de impacto profundo (1.5s)
-    const bass = audioCtx.createOscillator();
-    bass.type = 'sine';
-    bass.frequency.setValueAtTime(120, now);
-    bass.frequency.exponentialRampToValueAtTime(30, now + 1.2);
-
-    const bassGain = audioCtx.createGain();
-    bassGain.gain.setValueAtTime(0, now);
-    bassGain.gain.linearRampToValueAtTime(2.0, now + 0.1); // Ataque rápido
-    bassGain.gain.exponentialRampToValueAtTime(0.1, now + 1.5); // Decay largo
-
-    bass.connect(bassGain);
-    bassGain.connect(audioCtx.destination);
-    bass.start(now);
-    bass.stop(now + 1.5);
-
-    // FASE 3: Boom de impacto final muy grave (0.4s después)
-    setTimeout(() => {
-      if (audioCtx.state === 'running') {
-        const finalBoom = audioCtx.createOscillator();
-        finalBoom.type = 'sine';
-        finalBoom.frequency.setValueAtTime(80, now + 1.3);
-        finalBoom.frequency.exponentialRampToValueAtTime(20, now + 1.7);
-
-        const finalGain = audioCtx.createGain();
-        finalGain.gain.setValueAtTime(0, now + 1.3);
-        finalGain.gain.linearRampToValueAtTime(1.8, now + 1.35);
-        finalGain.gain.exponentialRampToValueAtTime(0, now + 1.7);
-
-        finalBoom.connect(finalGain);
-        finalGain.connect(audioCtx.destination);
-        finalBoom.start(now + 1.3);
-        finalBoom.stop(now + 1.7);
-      }
-    }, 1300);
-
+    return activeWaveImpactAudio;
   } catch (e) {
-    console.error("Wave break sound error", e);
+    console.error('Wave break sound error', e);
+    return null;
   }
 }
 
@@ -631,6 +599,16 @@ export function dispose(manager) {
   if (finalScreamAudio) {
     finalScreamAudio.pause();
     finalScreamAudio.currentTime = 0;
+  }
+
+  if (waveImpactAudio) {
+    waveImpactAudio.pause();
+    waveImpactAudio.currentTime = 0;
+  }
+
+  if (activeWaveImpactAudio) {
+    activeWaveImpactAudio.pause();
+    activeWaveImpactAudio.currentTime = 0;
   }
 
   if (audioCtx && audioCtx.state !== 'closed') {
