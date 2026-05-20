@@ -129,8 +129,10 @@ async function tryLoadModel(url) {
   try {
     const loader = new GLTFLoader();
     const gltf = await loader.loadAsync(url);
+    console.log('[tryLoadModel] loaded', url);
     return gltf.scene;
-  } catch {
+  } catch (err) {
+    console.error('[tryLoadModel] failed to load', url, err);
     return null;
   }
 }
@@ -297,14 +299,7 @@ export async function createCityEnvironment(manager) {
   const particles = new THREE.Points(particleGeo, particleMat);
   manager.camera.add(particles);
 
-  const handGeo = new THREE.BoxGeometry(0.22, 0.62, 0.22);
-  const handMat = new THREE.MeshStandardMaterial({ color: 0xe4bea5, roughness: 0.7 });
-  const leftHand = new THREE.Mesh(handGeo, handMat);
-  const rightHand = new THREE.Mesh(handGeo, handMat);
-  leftHand.position.set(-0.65, -1.55, -1.1);
-  rightHand.position.set(0.65, -1.55, -1.1);
-  manager.camera.add(leftHand);
-  manager.camera.add(rightHand);
+  // Manos eliminadas: no se añaden manos a la cámara en este entorno
 
   return {
     update(deltaTime, speedNorm, elapsedTime) {
@@ -319,18 +314,9 @@ export async function createCityEnvironment(manager) {
         if (p[i * 3 + 2] > 35) p[i * 3 + 2] -= 70;
       }
       particles.geometry.attributes.position.needsUpdate = true;
-
-      const handRaise = Math.min(1.0, elapsedTime * 0.35);
-      const spread = 0.45 + speedNorm * 0.35;
-      leftHand.rotation.z = spread;
-      rightHand.rotation.z = -spread;
-      leftHand.position.y = -1.55 + handRaise;
-      rightHand.position.y = -1.55 + handRaise;
     },
     dispose() {
       manager.camera.remove(particles);
-      manager.camera.remove(leftHand);
-      manager.camera.remove(rightHand);
       manager.scene.remove(root);
     }
   };
