@@ -37,8 +37,10 @@ export function createFallController(camera, options = {}) {
 
       if (state.falling && !state.impacted) {
         const fallTime = state.elapsed - startDelay;
-        // Aceleración constante calibrada para alcanzar impacto en ~10 segundos
-        const acceleration = 10.8;
+        // Calcular aceleración constante basada en la distancia y la duración objetivo
+        const distanceToImpact = startY - impactY;
+        const targetFallTime = Math.max(0.1, fallDuration);
+        const acceleration = (2 * distanceToImpact) / (targetFallTime * targetFallTime);
         state.speed = Math.min(maxSpeed, acceleration * fallTime);
 
         const speedNorm = THREE.MathUtils.clamp(state.speed / maxSpeed, 0, 1);

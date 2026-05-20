@@ -48,10 +48,34 @@ export async function createDream2Audio(camera) {
 
   const loader = new THREE.AudioLoader();
   const windBuffer = await loader.loadAsync('/assets/wind.wav');
+  const fallBuffer = await loader.loadAsync('/assets/FALLING FROM BUILDING in 360 VR 4K (mp3cut.net).mp3');
 
   wind.setBuffer(windBuffer);
   wind.setLoop(true);
   wind.setVolume(0.18);
+
+  const fallSound = new THREE.Audio(listener);
+  fallSound.setBuffer(fallBuffer);
+  fallSound.setLoop(false);
+  fallSound.setVolume(0.675); // reduced 25% from 0.9
+  // We'll play the fall buffer via a raw AudioBufferSource so we can start at an offset
+  const fallTrimOffset = 1.0; // recortar primer segundo
+  let fallSource = null;
+  const fallGain = listener.context.createGain();
+  fallGain.gain.value = 0.675; // reduced 25% from 0.9
+  fallGain.connect(listener.context.destination);
+
+  function playFallBuffer(offsetSeconds = 0) {
+    if (fallSource) {
+      try { fallSource.stop(); } catch (e) {}
+      fallSource = null;
+    }
+    fallSource = listener.context.createBufferSource();
+    fallSource.buffer = fallBuffer;
+    fallSource.connect(fallGain);
+    fallSource.start(0, offsetSeconds);
+    fallSource.onended = () => { fallSource = null; };
+  }
 
   const impactBuffer = createImpactBuffer(listener.context);
   impact.setBuffer(impactBuffer);
@@ -67,10 +91,15 @@ export async function createDream2Audio(camera) {
 
   return {
     listener,
+    getAudioDuration() {
+      return fallBuffer ? Math.max(0, fallBuffer.duration - fallTrimOffset) : 0;
+    },
     async start() {
       if (listener.context.state === 'suspended') {
         await listener.context.resume();
       }
+      // Reproduce la pista de caída empezando en el offset recortado
+      playFallBuffer(fallTrimOffset);
       if (!wind.isPlaying) {
         wind.play();
       }
@@ -81,15 +110,13 @@ export async function createDream2Audio(camera) {
         wind.setVolume(targetVolume);
         wind.setPlaybackRate(0.8 + speedNorm * 0.5);
       }
-
-      whooshCooldown = Math.max(0, whooshCooldown - deltaTime);
-      if (speedNorm > 0.72 && whooshCooldown === 0 && !whoosh.isPlaying) {
-        whoosh.play();
-        whooshCooldown = 0.24;
-      }
     },
     fadeOut() {
       // Detiene los sonidos violentos y permite un fundido silencioso
+      if (fallSource) {
+        try { fallSource.stop(); } catch (e) {}
+        fallSource = null;
+      }
       if (wind.isPlaying) {
         wind.setVolume(0.01);
       }
@@ -101,6 +128,10 @@ export async function createDream2Audio(camera) {
       }
     },
     playImpact() {
+      if (fallSource) {
+        try { fallSource.stop(); } catch (e) {}
+        fallSource = null;
+      }
       if (wind.isPlaying) {
         wind.stop();
       }
@@ -113,6 +144,10 @@ export async function createDream2Audio(camera) {
       impact.play();
     },
     dispose() {
+      if (fallSource) {
+        try { fallSource.stop(); } catch (e) {}
+        fallSource = null;
+      }
       if (wind.isPlaying) wind.stop();
       if (impact.isPlaying) impact.stop();
       if (whoosh.isPlaying) whoosh.stop();

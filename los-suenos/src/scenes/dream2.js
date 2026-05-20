@@ -79,6 +79,16 @@ export async function init(manager) {
   state.audio = await createDream2Audio(manager.camera);
   await state.audio.start();
 
+  // Terminar el sueño exactamente cuando termine la pista de audio de caída
+  const audioDuration = state.audio && typeof state.audio.getAudioDuration === 'function'
+    ? state.audio.getAudioDuration()
+    : 0;
+  if (audioDuration > 0) {
+    state.transitionTimer = setTimeout(() => {
+      triggerClimax(manager);
+    }, audioDuration * 1000);
+  }
+
   // Lógica de caída desacoplada para facilitar ajuste de física y cámara.
   // Duración total: ~10 segundos
   state.fallController = createFallController(manager.camera, {
@@ -89,7 +99,7 @@ export async function init(manager) {
     climaxY: 50,
     impactY: 20,
     maxSpeed: 120,
-    fallDuration: 10
+    fallDuration: 7
   });
 }
 
