@@ -12,6 +12,60 @@ let materials = {};
 let sounds = {};
 
 let keys = { w: false, a: false, s: false, d: false };
+let audioCtx = null;
+
+function playStepSound(volume = 1.0) {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    if (!audioCtx) audioCtx = new AudioContext();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    const now = audioCtx.currentTime;
+    const bufferSize = Math.floor(audioCtx.sampleRate * 0.14);
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+
+    for (let i = 0; i < bufferSize; i++) {
+      const t = i / bufferSize;
+      const decay = Math.pow(1 - t, 2.2);
+      data[i] = (Math.random() * 2 - 1) * decay * 0.16;
+    }
+
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(180 + Math.random() * 70, now);
+    filter.Q.value = 0.85;
+
+    const noiseGain = audioCtx.createGain();
+    noiseGain.gain.setValueAtTime(0, now);
+    noiseGain.gain.linearRampToValueAtTime((0.1 + Math.random() * 0.05) * volume, now + 0.01);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+
+    const thump = audioCtx.createOscillator();
+    thump.type = 'sine';
+    thump.frequency.setValueAtTime(68 + Math.random() * 10, now);
+
+    const thumpGain = audioCtx.createGain();
+    thumpGain.gain.setValueAtTime(0, now);
+    thumpGain.gain.linearRampToValueAtTime(0.08 * volume, now + 0.005);
+    thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(audioCtx.destination);
+
+    thump.connect(thumpGain);
+    thumpGain.connect(audioCtx.destination);
+
+    noise.start(now);
+    thump.start(now);
+    thump.stop(now + 0.13);
+  } catch (e) {}
+}
 
 const keydownListener = (e) => {
   if (e.key === 'w' || e.key === 'W') keys.w = true;
@@ -71,12 +125,12 @@ export async function init(manager) {
 
   // Audio
   sounds.hum = new Howl({ src: ['/assets/fluorescent_hum.wav'], loop: true, volume: 0.2 });
-  sounds.step = new Howl({ src: ['/assets/footstep_wood.wav'], volume: 0.35 });
-  sounds.stalkerStep = new Howl({ src: ['/assets/footstep_wood.wav'], volume: 0.0 });
   sounds.breath = new Howl({ src: ['/assets/breath_heavy.wav'], loop: true, volume: 0.0 });
-  
+  sounds.ambient = new Howl({ src: ['/assets/A_20-second_audio_cl_#2-1779305505888.mp3'], loop: true, volume: 0.5 });
+
   sounds.hum.play();
   sounds.breath.play();
+  sounds.ambient.play();
 }
 
 function createMaterials() {
@@ -302,19 +356,18 @@ export function update(deltaTime, manager) {
 
   // Audio: Pasos del jugador
   if (isMoving && state.timeElapsed - state.lastStepTime > 0.5) {
-    sounds.step.play();
+    playStepSound(1.0);
     state.lastStepTime = state.timeElapsed;
   }
 
+  // Volumen del stalker sube con el tiempo
+  const stalkerVol = Math.min(state.timeElapsed / 45, 1.0) * (lookingBack ? 0 : 1);
+
   // Audio: Pasos del stalker (atrás)
   if (!lookingBack && isMoving && state.timeElapsed - state.lastStalkerStepTime > 0.55) {
-    sounds.stalkerStep.play();
+    playStepSound(stalkerVol);
     state.lastStalkerStepTime = state.timeElapsed;
   }
-  
-  // Volumen de respiración y stalker sube con el tiempo
-  const stalkerVol = Math.min(state.timeElapsed / 45, 1.0) * (lookingBack ? 0 : 1);
-  sounds.stalkerStep.volume(stalkerVol);
   
   const breathVol = Math.max(0, (state.timeElapsed - 25) / 20) * (lookingBack ? 0 : 0.8);
   sounds.breath.volume(breathVol);
@@ -388,5 +441,10 @@ export function dispose(manager) {
 
   for (let key in sounds) {
     if (sounds[key]) sounds[key].unload();
+  }
+
+  if (audioCtx) {
+    audioCtx.close();
+    audioCtx = null;
   }
 }
