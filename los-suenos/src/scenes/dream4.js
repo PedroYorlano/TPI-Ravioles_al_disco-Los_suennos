@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { createNoise2D } from 'simplex-noise';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import {
   EffectComposer,
   RenderPass,
@@ -31,122 +33,134 @@ const keyupListener = (e) => {
 };
 
 export async function init(manager) {
-  window.addEventListener('keydown', keydownListener);
-  window.addEventListener('keyup', keyupListener);
+  try {
+    window.addEventListener('keydown', keydownListener);
+    window.addEventListener('keyup', keyupListener);
 
-  state = {
-    timeElapsed: 0,
-    climaxTriggered: false,
-    climaxTimer: 0,
-    figureDistance: 50,
-    audioCtx: null,
-    padGain: null,
-    noiseGain: null,
-    oscillators: [],
-    grassMesh: null
-  };
+    state = {
+      initialized: false,
+      timeElapsed: 0,
+      climaxTriggered: false,
+      climaxTimer: 0,
+      figureDistance: 50,
+      audioCtx: null,
+      padGain: null,
+      noiseGain: null,
+      oscillators: [],
+      grassMesh: null
+    };
 
-  noise2D = createNoise2D();
+    noise2D = createNoise2D();
 
-  manager.camera.position.set(0, 1.8, 0);
-  manager.camera.rotation.set(0, 0, 0);
-  manager.scene.background = new THREE.Color(0x050110);
+    manager.camera.position.set(0, 1.8, 0);
+    manager.camera.rotation.set(0, 0, 0);
+    manager.scene.background = new THREE.Color(0x050110);
 
-  // Mensaje flotante de instrucción
-  const textOverlay = document.createElement('div');
-  textOverlay.id = 'dream4-run-msg';
-  textOverlay.style.cssText = `
-    position: fixed;
-    bottom: 20%;
-    left: 50%;
-    transform: translateX(-50%);
-    font-family: 'Georgia', serif;
-    font-size: 20px;
-    color: #ffd7b5;
-    text-shadow: 0 0 8px rgba(0,0,0,0.8), 0 0 16px rgba(255, 102, 0, 0.4);
-    pointer-events: none;
-    z-index: 100;
-    opacity: 1;
-    transition: opacity 2s ease-out;
-  `;
-  textOverlay.innerHTML = "Presiona SHIFT para correr";
-  document.body.appendChild(textOverlay);
-  state.runMsg = textOverlay;
+    // Mensaje flotante de instrucción
+    const textOverlay = document.createElement('div');
+    textOverlay.id = 'dream4-run-msg';
+    textOverlay.style.cssText = `
+      position: fixed;
+      bottom: 20%;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'Georgia', serif;
+      font-size: 20px;
+      color: #ffd7b5;
+      text-shadow: 0 0 8px rgba(0,0,0,0.8), 0 0 16px rgba(255, 102, 0, 0.4);
+      pointer-events: none;
+      z-index: 100;
+      opacity: 1;
+      transition: opacity 2s ease-out;
+    `;
+    textOverlay.innerHTML = "Presiona SHIFT para correr";
+    document.body.appendChild(textOverlay);
+    state.runMsg = textOverlay;
 
-  // Niebla atmosférica volumétrica (cálida, coincide con horizonte Y=0.0)
-  manager.scene.fog = new THREE.FogExp2(0xff6633, 0.008);
+    // Niebla atmosférica volumétrica (cálida, coincide con horizonte Y=0.0)
+    manager.scene.fog = new THREE.FogExp2(0xff6633, 0.008);
 
-  // 1. Cielo Procedural con Nubes Estilizadas
-  createSky(manager);
+    // 1. Cielo Procedural con Nubes Estilizadas
+    createSky(manager);
 
-  // 2. Sol Físico Deslumbrante para God Rays
-  const sunGroup = new THREE.Group();
-  sunGroup.position.set(0, -2, -180); // Parcialmente oculto por el horizonte
+    // 2. Sol Físico Deslumbrante para God Rays
+    const sunGroup = new THREE.Group();
+    sunGroup.position.set(0, -2, -180); // Parcialmente oculto por el horizonte
 
-  const sunGeo = new THREE.SphereGeometry(8, 32, 32);
-  const sunMat = new THREE.MeshStandardMaterial({
-    color: 0xffcc77,
-    emissive: 0xff9944,
-    emissiveIntensity: 2.0
-  });
-  const sunMesh = new THREE.Mesh(sunGeo, sunMat);
-  sunGroup.add(sunMesh);
+    const sunGeo = new THREE.SphereGeometry(8, 32, 32);
+    const sunMat = new THREE.MeshStandardMaterial({
+      color: 0xffcc77,
+      emissive: 0xff9944,
+      emissiveIntensity: 2.0
+    });
+    const sunMesh = new THREE.Mesh(sunGeo, sunMat);
+    sunGroup.add(sunMesh);
 
-  // Canvas para los Sprites del halo del sol
-  const createHaloTex = (r, g, b, a) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 128; canvas.height = 128;
-    const ctx = canvas.getContext('2d');
-    const grd = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    grd.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${a})`);
-    grd.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = grd;
-    ctx.fillRect(0, 0, 128, 128);
-    return new THREE.CanvasTexture(canvas);
-  };
+    // Canvas para los Sprites del halo del sol
+    const createHaloTex = (r, g, b, a) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 128; canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      const grd = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+      grd.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${a})`);
+      grd.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, 0, 128, 128);
+      return new THREE.CanvasTexture(canvas);
+    };
 
-  const sunHalo1 = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: createHaloTex(255, 102, 0, 0.3),
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false
-  }));
-  sunHalo1.scale.set(60, 60, 1);
-  sunGroup.add(sunHalo1);
+    const sunHalo1 = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: createHaloTex(255, 102, 0, 0.3),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    }));
+    sunHalo1.scale.set(60, 60, 1);
+    sunGroup.add(sunHalo1);
 
-  const sunHalo2 = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: createHaloTex(255, 51, 0, 0.08),
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false
-  }));
-  sunHalo2.scale.set(120, 120, 1);
-  sunGroup.add(sunHalo2);
+    const sunHalo2 = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: createHaloTex(255, 51, 0, 0.08),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    }));
+    sunHalo2.scale.set(120, 120, 1);
+    sunGroup.add(sunHalo2);
 
-  manager.scene.add(sunGroup);
-  state.sunMesh = sunMesh; // guardamos para GodRays
+    manager.scene.add(sunGroup);
+    state.sunMesh = sunMesh; // guardamos para GodRays
 
-  // 3. Terreno Hiperrealista y Pasto Instanciado con Viento
-  createTerrainAndGrass(manager);
+    // 3. Terreno Hiperrealista y Pasto Instanciado con Viento
+    createTerrainAndGrass(manager);
 
-  // 4. Figura Majestuosa y Halo
-  createFigure(manager);
+    // 4. Figura Majestuosa y Halo
+    await createFigure(manager);
 
-  // 5. Partículas (Motas de polvo dorado)
-  createParticles(manager);
+    // 5. Partículas (Motas de polvo dorado)
+    createParticles(manager);
 
-  // 6. Iluminación Escénica
-  const hemiLight = new THREE.HemisphereLight(0xff66bb, 0x111122, 1.0);
-  manager.scene.add(hemiLight);
-  const dirLight = new THREE.DirectionalLight(0xffaa55, 3.0);
-  dirLight.position.set(0, 8, -180);
-  manager.scene.add(dirLight);
+    // 6. Iluminación Escénica
+    const hemiLight = new THREE.HemisphereLight(0xff66bb, 0x111122, 1.0);
+    manager.scene.add(hemiLight);
+    const dirLight = new THREE.DirectionalLight(0xffaa55, 3.0);
+    dirLight.position.set(0, 8, -180);
+    manager.scene.add(dirLight);
 
-  // 7. Postprocesado (Composer)
-  setupPostprocessing(manager, state.sunMesh);
+    // 7. Postprocesado (Composer)
+    setupPostprocessing(manager, state.sunMesh);
 
-  // 8. Audio (Web Audio API nativa para pad cálido y viento)
-  setupAudio();
+    // 8. Audio (Web Audio API nativa para pad cálido y viento)
+    setupAudio();
+
+    state.initialized = true;
+  } catch (err) {
+    console.error("DREAM4 INIT ERROR:", err);
+    const errDiv = document.createElement('div');
+    errDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:red;color:white;z-index:999999;font-family:monospace;padding:20px;overflow:auto;font-size:16px;';
+    errDiv.innerHTML = '<h1>Error during Dream 4 Init:</h1><pre>' + err.stack + '</pre>';
+    document.body.appendChild(errDiv);
+    throw err;
+  }
 }
 
 function createSky(manager) {
@@ -314,125 +328,63 @@ function createTerrainAndGrass(manager) {
   manager.scene.add(state.grassMesh);
 }
 
-function createFigure(manager) {
+async function createFigure(manager) {
   figure.group = new THREE.Group();
   figure.group.position.set(0, 0, -state.figureDistance);
 
-  // Silueta Humana Básica
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0x000000,
-    emissive: 0x000000,
-    roughness: 1.0,
-    metalness: 0.0
-  });
+  // Cargar modelo GLB con DRACOLoader
+  const dracoLoader = new DRACOLoader();
+  dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+  const loader = new GLTFLoader();
+  loader.setDRACOLoader(dracoLoader);
 
-  const bodyGroup = new THREE.Group();
+  let model;
+  try {
+    const modelUrl = new URL('../assets/models/Copilot3D-1f9e01da-72de-4614-9f74-cafe446d987d.glb', import.meta.url).href;
+    const gltf = await loader.loadAsync(modelUrl);
+    model = gltf.scene;
 
-  // Cadera (Esfera achatada para curvas más suaves y anchas)
-  const pelvisGeo = new THREE.SphereGeometry(0.24, 16, 16);
-  const pelvis = new THREE.Mesh(pelvisGeo, mat);
-  pelvis.scale.set(1.0, 0.75, 0.85);
-  pelvis.position.y = 0.85;
-  bodyGroup.add(pelvis);
+    model.traverse(child => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
 
-  // Cintura (Cilindro que conecta torso y cadera)
-  const waistGeo = new THREE.CylinderGeometry(0.15, 0.2, 0.35, 16);
-  const waist = new THREE.Mesh(waistGeo, mat);
-  waist.position.y = 1.1;
-  bodyGroup.add(waist);
+    // Escala inicial: ajustar hasta que la figura mida ~2.52 unidades de alto (1.8 * 1.4)
+    const box = new THREE.Box3().setFromObject(model);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const currentHeight = size.y || 1.8;
+    const scaleFactor = 2.52 / currentHeight;
+    model.scale.set(scaleFactor, scaleFactor, scaleFactor);
 
-  // Torso superior / Pecho (Esfera estirada para forma orgánica)
-  const chestGeo = new THREE.SphereGeometry(0.2, 16, 16);
-  const chest = new THREE.Mesh(chestGeo, mat);
-  chest.scale.set(1.0, 1.25, 0.85);
-  chest.position.y = 1.35;
-  bodyGroup.add(chest);
+    // Posición Y: pies tocando el suelo (lowest point at local Y=0)
+    model.position.y = -box.min.y * scaleFactor;
+    model.position.x = -((box.min.x + box.max.x) / 2) * scaleFactor;
+    model.position.z = -((box.min.z + box.max.z) / 2) * scaleFactor;
 
-  // Cuello
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.15, 8), mat);
-  neck.position.y = 1.62;
-  bodyGroup.add(neck);
+    // Rotación Y: rotar 180 grados desde la rotación anterior para que mire en el sentido opuesto (hacia el jugador)
+    model.rotation.y = 0;
 
-  // Cabeza
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 16), mat);
-  head.position.y = 1.83;
-  bodyGroup.add(head);
+    figure.group.add(model);
+    figure.model = model;
 
-  // Pelo largo y ondulado (Masa de pelo suelto cayendo sobre la espalda y hombros)
-  const hairGroup = new THREE.Group();
+    // Animación
+    if (gltf.animations && gltf.animations.length > 0) {
+      const mixer = new THREE.AnimationMixer(model);
+      const idleClip = gltf.animations.find(clip => clip.name.toLowerCase().includes('idle')) || gltf.animations[0];
+      const action = mixer.clipAction(idleClip);
+      action.play();
+      figure.mixer = mixer;
+    } else {
+      figure.baseScaleY = scaleFactor;
+    }
+  } catch (err) {
+    console.error("Error al cargar el modelo de la silueta GLB", err);
+  }
 
-  // Volumen en la nuca
-  const hairBase = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 16), mat);
-  hairBase.scale.set(1.2, 0.9, 1.1);
-  hairBase.position.set(0, 1.75, -0.08);
-  hairGroup.add(hairBase);
-
-  // Mechón central ancho (espalda)
-  const strandMain = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.25, 0.65, 16), mat);
-  strandMain.scale.set(1, 1, 0.4); // Aplanado para que sea manto, no tubo
-  strandMain.position.set(0, 1.45, -0.16);
-  strandMain.rotation.x = 0.15;
-  hairGroup.add(strandMain);
-
-  // Mechones laterales (cubriendo parcialmente los hombros)
-  const strandLeft = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.18, 0.55, 16), mat);
-  strandLeft.scale.set(1, 1, 0.5);
-  strandLeft.position.set(-0.16, 1.45, -0.12);
-  strandLeft.rotation.x = 0.12;
-  strandLeft.rotation.z = 0.15; // Cae hacia afuera
-  hairGroup.add(strandLeft);
-
-  const strandRight = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.18, 0.55, 16), mat);
-  strandRight.scale.set(1, 1, 0.5);
-  strandRight.position.set(0.16, 1.45, -0.12);
-  strandRight.rotation.x = 0.12;
-  strandRight.rotation.z = -0.15; // Cae hacia afuera
-  hairGroup.add(strandRight);
-
-  bodyGroup.add(hairGroup);
-
-  // Hombros (Más estrechos, redondeados y ligeramente caídos)
-  const shoulderGeo = new THREE.SphereGeometry(0.09, 8, 8);
-  const leftShoulder = new THREE.Mesh(shoulderGeo, mat);
-  leftShoulder.position.set(-0.21, 1.43, 0);
-  const rightShoulder = new THREE.Mesh(shoulderGeo, mat);
-  rightShoulder.position.set(0.21, 1.43, 0);
-  bodyGroup.add(leftShoulder, rightShoulder);
-
-  // Brazo Izquierdo (Más largo y delgado)
-  const armGeo = new THREE.CylinderGeometry(0.045, 0.035, 0.65, 8);
-  const leftArm = new THREE.Mesh(armGeo, mat);
-  leftArm.position.set(-0.25, 1.1, 0);
-  leftArm.rotation.z = -0.12;
-  bodyGroup.add(leftArm);
-
-  // Brazo Derecho (Pivotable)
-  figure.armPivot = new THREE.Group();
-  figure.armPivot.position.set(0.21, 1.43, 0); // Hombro derecho
-  const rightArm = new THREE.Mesh(armGeo, mat);
-  rightArm.position.set(0, -0.32, 0);
-  rightArm.rotation.z = 0.12;
-  figure.armPivot.add(rightArm);
-  bodyGroup.add(figure.armPivot);
-
-  // Piernas (Más largas para mayor altura)
-  const legGeo = new THREE.CylinderGeometry(0.08, 0.05, 0.8, 8);
-  const leftLeg = new THREE.Mesh(legGeo, mat);
-  leftLeg.position.set(-0.11, 0.4, 0);
-  const rightLeg = new THREE.Mesh(legGeo, mat);
-  rightLeg.position.set(0.11, 0.4, 0);
-  bodyGroup.add(leftLeg, rightLeg);
-
-  // Vestido sutil / Túnica translúcida inferior para unificar la silueta
-  const skirtGeo = new THREE.ConeGeometry(0.35, 1.0, 16, 1, true);
-  const skirt = new THREE.Mesh(skirtGeo, mat);
-  skirt.position.y = 0.4;
-  // Aumentar la altura y tamaño general de la figura para hacerla imponente
-  bodyGroup.scale.set(1.2, 1.35, 1.2);
-
-  figure.group.add(bodyGroup);
-
-  // Aura volumétrica (Un solo Sprite de halo)
+  // Aura volumétrica (Un solo Sprite de halo) - posicionado centrado a media altura (Y = 1.26)
   const canvas = document.createElement('canvas');
   canvas.width = 128; canvas.height = 128;
   const ctx = canvas.getContext('2d');
@@ -451,7 +403,7 @@ function createFigure(manager) {
   });
   const sprite = new THREE.Sprite(spriteMat);
   sprite.scale.set(16, 16, 1); // Tamaño base
-  sprite.position.set(0, 2.0, -0.5); // Ligeramente más alto por el escalado
+  sprite.position.set(0, 1.26, 0); // Centrado a media altura (2.52 / 2)
   figure.haloSprite = sprite; // Guardar referencia para animar
   figure.haloBaseColor = new THREE.Color(0xaa88ff); // Color base para intensificar
   figure.group.add(sprite);
@@ -640,11 +592,19 @@ function setupAudio() {
 }
 
 export function update(deltaTime, manager) {
+  if (!state.initialized) return;
   state.timeElapsed += deltaTime;
 
   if (state.climaxTriggered) {
     updateClimax(deltaTime, manager);
     return;
+  }
+
+  // Actualizar animación o respiración de la figura
+  if (figure.mixer) {
+    figure.mixer.update(deltaTime);
+  } else if (figure.model && figure.baseScaleY !== undefined) {
+    figure.model.scale.y = figure.baseScaleY * (1.0 + 0.015 * Math.sin(state.timeElapsed * 0.4));
   }
 
   // Animación del Shader del Pasto
@@ -715,7 +675,7 @@ export function update(deltaTime, manager) {
     figure.group.position.y = noise2D(figure.group.position.x * 0.02, -figure.group.position.z * 0.02) * 2.5 - 1.0;
   }
 
-  if (dist2D < 6) {
+  if (dist2D < 6 && figure.armPivot) {
     // Extiende la mano dramáticamente
     figure.armPivot.rotation.x = THREE.MathUtils.lerp(figure.armPivot.rotation.x, -Math.PI / 1.5, deltaTime * 4);
   }
@@ -800,5 +760,45 @@ export function dispose(manager) {
 
   if (state.audioCtx && state.audioCtx.state !== 'closed') {
     state.audioCtx.close();
+  }
+
+  // Liberar recursos de la figura
+  if (figure.mixer) {
+    figure.mixer = null;
+  }
+
+  if (figure.model) {
+    figure.model.traverse(child => {
+      if (child.isMesh) {
+        child.geometry.dispose();
+        if (Array.isArray(child.material)) {
+          child.material.forEach(mat => mat.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+    });
+    if (figure.model.parent) {
+      figure.model.parent.remove(figure.model);
+    }
+    manager.scene.remove(figure.model);
+    figure.model = null;
+  }
+
+  if (figure.haloSprite) {
+    figure.haloSprite.geometry.dispose();
+    figure.haloSprite.material.dispose();
+    figure.haloSprite = null;
+  }
+
+  if (figure.burst) {
+    figure.burst.geometry.dispose();
+    figure.burst.material.dispose();
+    figure.burst = null;
+  }
+
+  if (figure.group) {
+    manager.scene.remove(figure.group);
+    figure.group = null;
   }
 }
