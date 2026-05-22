@@ -508,6 +508,146 @@ export async function init(manager) {
       treeGroup.position.set(xPos, -0.75, zPos); // Alineado con el borde inferior del marco
       state.exteriorGroup.add(treeGroup);
     }
+
+    // -------------------------------------------------------------
+    // VOLUMETRIC MOON LIGHT BEAM & DUST PARTICLES
+    // -------------------------------------------------------------
+    // Dirección desde la luna (punto medio: alejado de la ventana y más hacia la cama sin invadirla)
+    const directionVec = new THREE.Vector3(65, -35, -12).normalize();
+    const beamLength = (-1.5 / directionVec.y) / 0.85; // Ajuste automático de longitud según el ángulo para tocar el suelo
+
+    const beamGeo = new THREE.CylinderGeometry(0.7, 1.0, beamLength, 32, 1, true);
+    beamGeo.translate(0, -beamLength / 2, 0);
+
+    const beamMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uColor: { value: new THREE.Color(0x88bbff) }, // Color azulado de la luna
+        uIntensity: { value: 0.05 } // Reducido (antes 0.15) para hacerlo más discreto y sutil
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+        void main() {
+          vUv = uv;
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          vViewPosition = -mvPosition.xyz;
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        uniform float uIntensity;
+        uniform float uTime;
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+        void main() {
+          // 1. Desvanecimiento suave en los extremos
+          float verticalFade = smoothstep(0.0, 0.15, vUv.y) * smoothstep(1.0, 0.8, vUv.y);
+
+          // 2. Efecto Fresnel / Fading en los bordes para hacerlo difuminado
+          vec3 normal = normalize(vNormal);
+          vec3 viewDir = normalize(vViewPosition);
+          float rim = dot(normal, viewDir);
+          float edgeFade = pow(rim, 2.0);
+
+          // 3. Modulación de ruido animada
+          float noisePattern = sin(vUv.y * 8.0 - uTime * 0.8) * 0.1 + 0.9;
+
+          float alpha = verticalFade * edgeFade * noisePattern * uIntensity;
+
+          gl_FragColor = vec4(uColor, alpha);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide
+    });
+
+    const beamMesh = new THREE.Mesh(beamGeo, beamMat);
+    beamMesh.position.set(-2.5, 1.5, 0);
+
+    const alignAxis = new THREE.Vector3(0, -1, 0);
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(alignAxis, directionVec);
+    beamMesh.quaternion.copy(quaternion);
+
+    manager.scene.add(beamMesh);
+    state.beamMesh = beamMesh;
+    state.beamMatUniforms = beamMat.uniforms;
+    state.beamLength = beamLength; // Almacenar la longitud dinámica para la actualización de partículas
+
+    // SISTEMA DE PARTÍCULAS DEL HAZ (Más sutil)
+    const particleCount = 65; // Reducido (antes 150) para ser discreto
+    const particleGeo = new THREE.BufferGeometry();
+    const posArray = new Float32Array(particleCount * 3);
+    const speeds = new Float32Array(particleCount);
+    const phases = new Float32Array(particleCount);
+
+    for (let i = 0; i < particleCount; i++) {
+      const y = -Math.random() * beamLength;
+      const radiusAtY = 0.7 + (1.0 - 0.7) * (-y / beamLength);
+      const r = Math.random() * radiusAtY;
+      const theta = Math.random() * Math.PI * 2;
+
+      posArray[i * 3] = r * Math.cos(theta);
+      posArray[i * 3 + 1] = y;
+      posArray[i * 3 + 2] = r * Math.sin(theta);
+
+      // Velocidad reducida (antes 0.15 + 0.25) para un efecto flotante más sutil y calmo
+      speeds[i] = 0.05 + Math.random() * 0.10;
+      phases[i] = Math.random() * Math.PI * 2;
+    }
+
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+
+    const particleMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uColor: { value: new THREE.Color(0xffeedd) }, // Dorado cálido suave
+        uBeamLength: { value: beamLength }
+      },
+      vertexShader: `
+        varying float vAlpha;
+        varying float vDepthFade;
+        uniform float uTime;
+        uniform float uBeamLength;
+        void main() {
+          float normY = -position.y / uBeamLength;
+          vDepthFade = smoothstep(0.0, 0.15, normY) * smoothstep(1.0, 0.8, normY);
+          vAlpha = 0.3 + 0.7 * sin(uTime * 2.0 + position.y * 4.0);
+
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = (3.2 * vAlpha) * (15.0 / -mvPosition.z); // Tamaño reducido (de 5.0 a 3.2)
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        varying float vAlpha;
+        varying float vDepthFade;
+        void main() {
+          float r = distance(gl_PointCoord, vec2(0.5));
+          if (r > 0.5) discard;
+          float intensity = 1.0 - (r * 2.0);
+          gl_FragColor = vec4(uColor, intensity * vAlpha * vDepthFade * 0.35); // Opacidad reducida (de 0.7 a 0.35)
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+
+    const beamParticles = new THREE.Points(particleGeo, particleMat);
+    beamMesh.add(beamParticles);
+
+    state.beamParticleSpeeds = speeds;
+    state.beamParticlePhases = phases;
+    state.beamParticlesGeometry = particleGeo;
+    state.beamParticleUniforms = particleMat.uniforms;
   }
 
   // Cristal reflexivo de la ventana (para agregar realismo y ocultar aún más el truco)
@@ -712,7 +852,7 @@ export async function init(manager) {
   lampBulb.position.set(0.17, 0.47, 0.01);
   lampGroup.add(lampBulb);
 
-  const lampLight = new THREE.SpotLight(0xffd09a, 0.42, 4.8, Math.PI / 6, 0.55, 1);
+  const lampLight = new THREE.SpotLight(0xffd09a, 0.82, 4.8, Math.PI / 6, 0.55, 1);
   lampLight.position.set(0.17, 0.56, 0.02);
   lampLight.target.position.set(0.22, 0.12, -0.35);
   lampGroup.add(lampLight);
@@ -816,6 +956,38 @@ export function update(deltaTime, manager) {
     state.windowUniforms.uTime.value = state.timeElapsed;
   }
 
+  if (state.beamMatUniforms) {
+    state.beamMatUniforms.uTime.value = state.timeElapsed;
+  }
+  if (state.beamParticleUniforms) {
+    state.beamParticleUniforms.uTime.value = state.timeElapsed;
+  }
+
+  if (state.beamParticlesGeometry) {
+    const pos = state.beamParticlesGeometry.attributes.position.array;
+    const count = pos.length / 3;
+    const limitY = state.beamLength ? -state.beamLength : -6.0;
+    for (let i = 0; i < count; i++) {
+      // 1. Desplazamiento hacia abajo a lo largo del eje Y local del haz
+      pos[i * 3 + 1] -= state.beamParticleSpeeds[i] * deltaTime;
+
+      // 2. Deriva suave (sinusoidal) horizontal
+      pos[i * 3] += Math.sin(state.timeElapsed * 0.5 + state.beamParticlePhases[i]) * 0.05 * deltaTime;
+      pos[i * 3 + 2] += Math.cos(state.timeElapsed * 0.5 + state.beamParticlePhases[i]) * 0.05 * deltaTime;
+
+      // 3. Si se sale del haz, reiniciar arriba
+      if (pos[i * 3 + 1] < limitY) {
+        pos[i * 3 + 1] = 0;
+        const radiusAtTop = 0.7;
+        const r = Math.random() * radiusAtTop;
+        const theta = Math.random() * Math.PI * 2;
+        pos[i * 3] = r * Math.cos(theta);
+        pos[i * 3 + 2] = r * Math.sin(theta);
+      }
+    }
+    state.beamParticlesGeometry.attributes.position.needsUpdate = true;
+  }
+
   // Visita 6: Tilt de cámara permanente e incorregible (3 grados)
   if (state.visit >= 6) {
     manager.camera.rotation.z = THREE.MathUtils.degToRad(3);
@@ -871,10 +1043,10 @@ export function update(deltaTime, manager) {
       // Determinar en qué eje ocurrió el impacto para permitir deslizarse
       if (oldX <= b.minX - pr || oldX >= b.maxX + pr) colX = true;
       if (oldZ <= b.minZ - pr || oldZ >= b.maxZ + pr) colZ = true;
-      
+
       // Si entramos exactamente por la esquina o hubo un salto brusco
       if (!colX && !colZ) {
-        colX = true; 
+        colX = true;
         colZ = true;
       }
     }
@@ -922,5 +1094,20 @@ export function dispose(manager) {
   }
   if (state.moonLight) {
     state.moonLight.removeFromParent();
+  }
+
+  if (state.beamMesh) {
+    state.beamMesh.traverse((child) => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(m => m.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+    });
+    state.beamMesh.removeFromParent();
+    state.beamMesh = null;
   }
 }
