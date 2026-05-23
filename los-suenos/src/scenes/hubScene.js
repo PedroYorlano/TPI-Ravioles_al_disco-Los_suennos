@@ -159,9 +159,16 @@ export async function init(manager) {
   buildDebugDreamMenu(manager);
   window.addEventListener('keydown', debugMenuKeydownListener);
 
-  // Cámara inicial
-  manager.camera.position.set(0, 1.6, 1.5); // Empezamos cerca del fondo de la habitación
+  // Cámara inicial (ajustada según la visita para evitar colisiones)
+  if (visit === 1) {
+    // Viene de la cinemática de introducción
+    manager.camera.position.set(0, 1.7, -0.3);
+  } else {
+    // Al volver de los sueños, aparece en el fondo de la habitación (seguro contra colisiones)
+    manager.camera.position.set(0, 1.7, 1.5);
+  }
   manager.camera.rotation.set(0, 0, 0);
+  manager.controls.enabled = true;
 
   // Limpiar niebla, background y environment global
   manager.scene.background = new THREE.Color(0x000000);
@@ -1007,8 +1014,8 @@ export function update(deltaTime, manager) {
   if (keys.a) manager.controls.moveRight(-speed);
   if (keys.d) manager.controls.moveRight(speed);
 
-  // Mantener altura
-  manager.camera.position.y = 1.6;
+  // Mantener altura (ajustada a 1.7)
+  manager.camera.position.y = 1.7;
 
   // Colisiones con las paredes (habitación de 5x4)
   if (manager.camera.position.x > 2.3) manager.camera.position.x = 2.3;

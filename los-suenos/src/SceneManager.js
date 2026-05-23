@@ -28,7 +28,7 @@ export class SceneManager {
     
     // Lock controls on click (estándar para primera persona)
     document.body.addEventListener('click', () => {
-      if (!this.isTransitioning) {
+      if (!this.isTransitioning && this.controls.enabled) {
         this.controls.lock();
       }
     });
