@@ -722,23 +722,27 @@ function triggerClimax(manager) {
 
 function updateClimax(deltaTime, manager) {
   state.climaxTimer += deltaTime;
+  // Protecciones: si la figura o su geometría ya fueron liberadas, salir
+  const posAttr = figure && figure.burst && figure.burst.geometry && figure.burst.geometry.attributes && figure.burst.geometry.attributes.position;
+  if (!posAttr) return;
 
-  // Expansión del burst
-  const bPos = figure.burst.geometry.attributes.position.array;
-  for (let i = 0; i < 500; i++) {
+  // Expansión del burst (usar el conteo real por seguridad)
+  const bPos = posAttr.array;
+  for (let i = 0; i < posAttr.count; i++) {
     bPos[i * 3] *= 1 + 8 * deltaTime;
     bPos[i * 3 + 1] *= 1 + 8 * deltaTime;
     bPos[i * 3 + 2] *= 1 + 8 * deltaTime;
   }
-  figure.burst.geometry.attributes.position.needsUpdate = true;
-  figure.burst.material.opacity = Math.max(0, 1.0 - state.climaxTimer * 2.0);
+  posAttr.needsUpdate = true;
+  if (figure.burst.material) figure.burst.material.opacity = Math.max(0, 1.0 - state.climaxTimer * 2.0);
 
-  // Parpadeo de glitch
-  effects.aberration.offset.x = (Math.random() - 0.5) * 0.2;
-  effects.aberration.offset.y = (Math.random() - 0.5) * 0.2;
+  // Parpadeo de glitch (proteger efectos)
+  if (effects && effects.aberration && effects.aberration.offset) {
+    effects.aberration.offset.x = (Math.random() - 0.5) * 0.2;
+    effects.aberration.offset.y = (Math.random() - 0.5) * 0.2;
+  }
 
   if (state.climaxTimer > 0.5) {
-    // Fade a negro instantáneo y transición
     manager.fadeMaterial.opacity = 1.0;
     manager.transitionTo('hub');
   }
