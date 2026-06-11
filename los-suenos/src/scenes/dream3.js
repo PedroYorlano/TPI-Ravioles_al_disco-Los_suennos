@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Howl } from 'howler';
 import { EffectComposer, RenderPass, EffectPass, DepthOfFieldEffect, VignetteEffect } from 'postprocessing';
 
@@ -13,6 +14,7 @@ let sounds = {};
 
 let keys = { w: false, a: false, s: false, d: false };
 let audioCtx = null;
+let monsterData = null;
 
 function playStepSound(volume = 1.0) {
   try {
@@ -95,7 +97,9 @@ export async function init(manager) {
     doorAnimPhase: 0, // 0 = closed, 1 = opening, 2 = holding, 3 = closing
     climaxPhase: 0,
     climaxLight: null,
-    climaxTimer: 0
+    climaxTimer: 0,
+    monsterWalkTime: 0,
+    monsterWalking: false
   };
 
   chunks = {};
@@ -123,9 +127,18 @@ export async function init(manager) {
   // Texturas procedurales (Canvas API)
   createMaterials();
 
+  // Carga del monstruo en background: no bloquea el fade-in ni el DOF
+  startMonsterLoad(manager.scene);
+
   // Audio
   sounds.hum = new Howl({ src: ['/assets/fluorescent_hum.wav'], loop: true, volume: 0.2 });
-  sounds.breath = new Howl({ src: ['/assets/breath_heavy.wav'], loop: true, volume: 0.0 });
+  sounds.breath = new Howl({
+    src: ['/assets/Deep,_wet,_raspy_bre_%234-1781136845512.mp3'],
+    loop: true,
+    volume: 0.0,
+    onloaderror: (_id, err) => console.error('[dream3] breath load error:', err),
+    onload: () => console.log('[dream3] breath loaded OK'),
+  });
   sounds.ambient = new Howl({ src: ['/assets/A_20-second_audio_cl_#2-1779305505888.mp3'], loop: true, volume: 0.5 });
 
   sounds.hum.play();
@@ -170,6 +183,56 @@ function createMaterials() {
   materials.ceil = new THREE.MeshStandardMaterial({ map: ceilTex, roughness: 1.0 });
   materials.door = new THREE.MeshStandardMaterial({ color: 0x4a3219, roughness: 0.8 });
   materials.frame = new THREE.MeshStandardMaterial({ color: 0x222222 });
+}
+
+function startMonsterLoad(scene) {
+  const loader = new GLTFLoader();
+  const modelUrl = new URL('../assets/models/2284_donne_erwan_silhouette.glb', import.meta.url).href;
+
+  loader.loadAsync(modelUrl).then(gltf => {
+    const model = gltf.scene;
+
+    // Escalar a ~2 unidades de alto usando solo Y
+    model.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    console.log('[dream3] monster size:', size.x.toFixed(2), size.y.toFixed(2), size.z.toFixed(2));
+
+    if (size.y > 0 && isFinite(size.y)) {
+      const s = 2.0 / size.y;
+      model.scale.setScalar(s);
+      model.updateMatrixWorld(true);
+      const box2 = new THREE.Box3().setFromObject(model);
+      if (isFinite(box2.min.y)) model.position.y = -box2.min.y;
+    }
+
+    // Material: negro liso, no necesita luces, no escribe depth para no romper DOF
+    const shadowMat = new THREE.MeshBasicMaterial({ color: 0x0a0505, depthWrite: false });
+    model.traverse(child => {
+      if (child.isMesh) child.material = shadowMat;
+    });
+
+    const group = new THREE.Group();
+    group.add(model);
+    group.position.set(0, 0, 25); // detrás del jugador al inicio (cámara arranca en Z=0)
+    scene.add(group);
+
+    let mixer = null;
+    let walkAction = null;
+    if (gltf.animations && gltf.animations.length > 0) {
+      mixer = new THREE.AnimationMixer(model);
+      const walkClip =
+        gltf.animations.find(c => c.name.toLowerCase().includes('walk')) ||
+        gltf.animations[0];
+      walkAction = mixer.clipAction(walkClip);
+      walkAction.play();
+      walkAction.paused = true;
+    }
+
+    monsterData = { group, mixer, walkAction };
+  }).catch(err => {
+    console.error('[dream3] Error cargando modelo de sombra:', err);
+  });
 }
 
 function updateChunks(manager) {
@@ -360,6 +423,45 @@ export function update(deltaTime, manager) {
     state.lastStepTime = state.timeElapsed;
   }
 
+  // Monstruo: se acerca cuando el jugador no mira atrás
+  if (monsterData) {
+    const monsterZ = monsterData.group.position.z;
+    const playerZ = manager.camera.position.z;
+
+    if (!lookingBack) {
+      // La distancia objetivo baja de 25 a 0 unidades a lo largo de 45s
+      const progress = Math.min(state.timeElapsed / 45, 1.0);
+      const targetDistBehind = Math.max(0, 25 - progress * 25);
+      const targetZ = playerZ + targetDistBehind;
+
+      const lerpSpeed = 2.0 + progress * 4.0; // Aumenta con el tiempo
+      monsterData.group.position.z = THREE.MathUtils.lerp(monsterZ, targetZ, deltaTime * lerpSpeed);
+
+      const actuallyMoving = Math.abs(monsterZ - targetZ) > 0.05;
+      if (actuallyMoving) {
+        state.monsterWalkTime += deltaTime;
+        state.monsterWalking = true;
+      } else {
+        state.monsterWalking = false;
+      }
+    } else {
+      state.monsterWalking = false;
+    }
+
+    // Animación del modelo: play/pause según si camina
+    if (monsterData.walkAction) monsterData.walkAction.paused = !state.monsterWalking;
+    if (monsterData.mixer) monsterData.mixer.update(deltaTime);
+
+    monsterData.group.position.x = 0;
+    monsterData.group.position.y = 0;
+
+    // Disparar clímax cuando el monstruo toca al jugador
+    const distToPlayer = monsterData.group.position.z - manager.camera.position.z;
+    if (distToPlayer <= 0.4 && !state.climaxTriggered) {
+      triggerClimax(manager);
+    }
+  }
+
   // Volumen del stalker sube con el tiempo
   const stalkerVol = Math.min(state.timeElapsed / 45, 1.0) * (lookingBack ? 0 : 1);
 
@@ -368,14 +470,16 @@ export function update(deltaTime, manager) {
     playStepSound(stalkerVol);
     state.lastStalkerStepTime = state.timeElapsed;
   }
-  
-  const breathVol = Math.max(0, (state.timeElapsed - 25) / 20) * (lookingBack ? 0 : 0.8);
-  sounds.breath.volume(breathVol);
 
-  // Disparar Clímax a los 45s
-  if (state.timeElapsed > 45 && !state.climaxTriggered) {
-    triggerClimax(manager);
-  }
+  // Volumen del aliento: base 0.5 apenas carga el monstruo, sube a 1.0 al acercarse
+  const breathDist = monsterData
+    ? Math.max(0, monsterData.group.position.z - manager.camera.position.z)
+    : 25;
+  const breathLinear = Math.max(0, Math.min(1, (25 - breathDist) / 25));
+  const breathVol = monsterData
+    ? Math.min(1.0, 0.5 + breathLinear * 0.5) * (lookingBack ? 0 : 1.0)
+    : 0;
+  sounds.breath.volume(breathVol);
 }
 
 function triggerClimax(manager) {
@@ -383,30 +487,52 @@ function triggerClimax(manager) {
   state.climaxPhase = 1;
   state.climaxTimer = 0;
 
-  // Apagar absolutamente todas las luces
+  // Calcular quaternion objetivo: mirar hacia el monstruo (+Z)
+  state.climaxStartQuat = manager.camera.quaternion.clone();
+  if (monsterData) {
+    const monsterPos = new THREE.Vector3(
+      monsterData.group.position.x,
+      manager.camera.position.y,
+      monsterData.group.position.z
+    );
+    const lookTarget = monsterPos.clone();
+    lookTarget.y = manager.camera.position.y;
+    const m = new THREE.Matrix4().lookAt(
+      manager.camera.position,
+      lookTarget,
+      new THREE.Vector3(0, 1, 0)
+    );
+    state.climaxTargetQuat = new THREE.Quaternion().setFromRotationMatrix(m);
+  } else {
+    state.climaxTargetQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0));
+  }
+
+  // Apagar todas las luces
   for (let key in chunks) {
-    if (chunks[key].light) {
-      chunks[key].light.intensity = 0;
-      chunks[key].light.color.setHex(0xff0000); // Cambio sutil imperceptible si no se enciende
-    }
+    if (chunks[key].light) chunks[key].light.intensity = 0;
   }
 
   manager.scene.fog = null;
 
-  // Luz de clímax frente al jugador
+  // Luz justo en la posición del monstruo
   state.climaxLight = new THREE.PointLight(0xffffff, 2.0, 5);
-  // Ponerla 3 unidades adelante de la cámara
-  const dir = new THREE.Vector3();
-  manager.camera.getWorldDirection(dir);
-  state.climaxLight.position.copy(manager.camera.position).add(dir.multiplyScalar(3));
+  if (monsterData) {
+    state.climaxLight.position.copy(monsterData.group.position);
+    state.climaxLight.position.y = 1.5;
+  }
   manager.scene.add(state.climaxLight);
 
   sounds.hum.stop();
-  sounds.breath.volume(1.0);
+  sounds.breath.stop();
 }
 
 function updateClimax(deltaTime, manager) {
   state.climaxTimer += deltaTime;
+
+  // Girar la cámara hacia el monstruo durante los primeros 0.6s
+  if (state.climaxTimer < 0.6 && state.climaxTargetQuat) {
+    manager.camera.quaternion.slerp(state.climaxTargetQuat, deltaTime * 10);
+  }
 
   // Parpadeo agresivo
   if (state.climaxLight) {
@@ -414,10 +540,8 @@ function updateClimax(deltaTime, manager) {
   }
 
   if (state.climaxTimer > 3.0) {
-    // Apagar todo y transición
     if (state.climaxLight) state.climaxLight.intensity = 0;
     manager.fadeMaterial.opacity = 1.0;
-    
     manager.transitionTo('hub');
   }
 }
@@ -438,6 +562,12 @@ export function dispose(manager) {
   chunks = {};
 
   if (state.climaxLight) manager.scene.remove(state.climaxLight);
+
+  if (monsterData) {
+    if (monsterData.mixer) monsterData.mixer.stopAllAction();
+    manager.scene.remove(monsterData.group);
+    monsterData = null;
+  }
 
   for (let key in sounds) {
     if (sounds[key]) sounds[key].unload();
