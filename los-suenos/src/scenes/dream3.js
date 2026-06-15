@@ -16,6 +16,10 @@ let keys = { w: false, a: false, s: false, d: false };
 let audioCtx = null;
 let monsterData = null;
 
+let breathBuffer = null;
+let breathSource = null;
+let breathGain = null;
+
 function playStepSound(volume = 1.0) {
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -99,7 +103,8 @@ export async function init(manager) {
     climaxLight: null,
     climaxTimer: 0,
     monsterWalkTime: 0,
-    monsterWalking: false
+    monsterWalking: false,
+    breathTimeout: null,
   };
 
   chunks = {};
@@ -132,18 +137,22 @@ export async function init(manager) {
 
   // Audio
   sounds.hum = new Howl({ src: ['/assets/fluorescent_hum.wav'], loop: true, volume: 0.2 });
-  sounds.breath = new Howl({
-    src: ['/assets/Deep,_wet,_raspy_bre_%234-1781136845512.mp3'],
-    loop: true,
-    volume: 0.0,
-    onloaderror: (_id, err) => console.error('[dream3] breath load error:', err),
-    onload: () => console.log('[dream3] breath loaded OK'),
-  });
   sounds.ambient = new Howl({ src: ['/assets/A_20-second_audio_cl_#2-1779305505888.mp3'], loop: true, volume: 0.5 });
 
   sounds.hum.play();
-  sounds.breath.play();
   sounds.ambient.play();
+
+  // Breath: cargado con Web Audio API para aplicar efectos en tiempo real
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!audioCtx) audioCtx = new AudioContext();
+  fetch('/assets/breath_raspy.mp3')
+    .then(r => r.arrayBuffer())
+    .then(buf => audioCtx.decodeAudioData(buf))
+    .then(decoded => {
+      breathBuffer = decoded;
+      playBreath();
+    })
+    .catch(err => console.error('[dream3] breath load error:', err));
 }
 
 function createMaterials() {
@@ -183,6 +192,62 @@ function createMaterials() {
   materials.ceil = new THREE.MeshStandardMaterial({ map: ceilTex, roughness: 1.0 });
   materials.door = new THREE.MeshStandardMaterial({ color: 0x4a3219, roughness: 0.8 });
   materials.frame = new THREE.MeshStandardMaterial({ color: 0x222222 });
+}
+
+function playBreath() {
+  if (!breathBuffer || !audioCtx || state.climaxTriggered) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+
+  const source = audioCtx.createBufferSource();
+  source.buffer = breathBuffer;
+  source.playbackRate.value = 0.78; // más grave y más lento
+
+  const gain = audioCtx.createGain();
+  gain.gain.value = 0;
+
+  // Echo: delay con feedback
+  const echoDelay = audioCtx.createDelay(1.0);
+  echoDelay.delayTime.value = 0.35;
+  const echoFeedback = audioCtx.createGain();
+  echoFeedback.gain.value = 0.38;
+  const echoWet = audioCtx.createGain();
+  echoWet.gain.value = 0.45;
+
+  // Reverb simulado: tres delays escalonados
+  const r1 = audioCtx.createDelay(0.5); r1.delayTime.value = 0.07;
+  const r2 = audioCtx.createDelay(0.5); r2.delayTime.value = 0.13;
+  const r3 = audioCtx.createDelay(0.5); r3.delayTime.value = 0.22;
+  const rg1 = audioCtx.createGain(); rg1.gain.value = 0.28;
+  const rg2 = audioCtx.createGain(); rg2.gain.value = 0.18;
+  const rg3 = audioCtx.createGain(); rg3.gain.value = 0.10;
+
+  // Señal seca directa
+  source.connect(gain);
+
+  // Cadena de echo
+  source.connect(echoDelay);
+  echoDelay.connect(echoFeedback);
+  echoFeedback.connect(echoDelay);
+  echoDelay.connect(echoWet);
+  echoWet.connect(gain);
+
+  // Reverb
+  source.connect(r1); r1.connect(rg1); rg1.connect(gain);
+  source.connect(r2); r2.connect(rg2); rg2.connect(gain);
+  source.connect(r3); r3.connect(rg3); rg3.connect(gain);
+
+  gain.connect(audioCtx.destination);
+
+  breathSource = source;
+  breathGain = gain;
+
+  source.onended = () => {
+    if (!state.climaxTriggered) {
+      state.breathTimeout = setTimeout(playBreath, 1000);
+    }
+  };
+
+  source.start();
 }
 
 function startMonsterLoad(scene) {
@@ -471,15 +536,12 @@ export function update(deltaTime, manager) {
     state.lastStalkerStepTime = state.timeElapsed;
   }
 
-  // Volumen del aliento: base 0.5 apenas carga el monstruo, sube a 1.0 al acercarse
+  // Volumen del aliento: 0.0 cuando el monstruo está lejos, 1.0 cuando nos toca
   const breathDist = monsterData
     ? Math.max(0, monsterData.group.position.z - manager.camera.position.z)
     : 25;
   const breathLinear = Math.max(0, Math.min(1, (25 - breathDist) / 25));
-  const breathVol = monsterData
-    ? Math.min(1.0, 0.5 + breathLinear * 0.5) * (lookingBack ? 0 : 1.0)
-    : 0;
-  sounds.breath.volume(breathVol);
+  if (breathGain) breathGain.gain.value = breathLinear;
 }
 
 function triggerClimax(manager) {
@@ -523,7 +585,13 @@ function triggerClimax(manager) {
   manager.scene.add(state.climaxLight);
 
   sounds.hum.stop();
-  sounds.breath.stop();
+  clearTimeout(state.breathTimeout);
+  if (breathSource) {
+    breathSource.onended = null;
+    try { breathSource.stop(); } catch (e) {}
+    breathSource = null;
+  }
+  breathGain = null;
 }
 
 function updateClimax(deltaTime, manager) {
@@ -568,6 +636,15 @@ export function dispose(manager) {
     manager.scene.remove(monsterData.group);
     monsterData = null;
   }
+
+  clearTimeout(state.breathTimeout);
+  if (breathSource) {
+    breathSource.onended = null;
+    try { breathSource.stop(); } catch (e) {}
+    breathSource = null;
+  }
+  breathGain = null;
+  breathBuffer = null;
 
   for (let key in sounds) {
     if (sounds[key]) sounds[key].unload();

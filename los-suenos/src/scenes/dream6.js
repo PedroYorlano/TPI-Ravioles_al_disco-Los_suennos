@@ -45,7 +45,10 @@ export async function init(manager) {
         figureLight: null,
         audioElement: null,
         text1: null,
-        text2: null
+        text2: null,
+        voiceSound: null,
+        voiceTimeout: null,
+        climaxSound: null
     };
 
     keys = { w: false };
@@ -328,51 +331,6 @@ export async function init(manager) {
     document.head.appendChild(fontLink);
     
     // Mensaje 1
-    const text1 = document.createElement('div');
-    text1.id = 'dream6-msg1';
-    text1.style.cssText = `
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        font-family: 'Creepster', cursive;
-        font-size: 72px;
-        color: #ff3333;
-        text-align: center;
-        pointer-events: none;
-        z-index: 100;
-        line-height: 1.5;
-        text-shadow: 0 0 20px rgba(255, 0, 0, 0.8), 0 0 40px rgba(0, 0, 0, 1);
-        opacity: 1;
-        letter-spacing: 2px;
-    `;
-    text1.innerHTML = '¿Se terminó?';
-    document.body.appendChild(text1);
-    state.text1 = text1;
-    
-    // Mensaje 2
-    const text2 = document.createElement('div');
-    text2.id = 'dream6-msg2';
-    text2.style.cssText = `
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        font-family: 'Creepster', cursive;
-        font-size: 72px;
-        color: #ff3333;
-        text-align: center;
-        pointer-events: none;
-        z-index: 100;
-        line-height: 1.5;
-        text-shadow: 0 0 20px rgba(255, 0, 0, 0.8), 0 0 40px rgba(0, 0, 0, 1);
-        opacity: 0;
-        letter-spacing: 2px;
-    `;
-    text2.innerHTML = 'Y... ¿Si nunca comenzó?';
-    document.body.appendChild(text2);
-    state.text2 = text2;
-
     // Suelo Procedural (Grietas)
     state.floorMat = new THREE.ShaderMaterial({
         uniforms: {
@@ -409,7 +367,7 @@ export async function init(manager) {
     `,
     transparent: true
   });
-  const worldFloorGeo = new THREE.PlaneGeometry(20, 20);
+  const worldFloorGeo = new THREE.PlaneGeometry(200, 200);
   const worldFloor = new THREE.Mesh(worldFloorGeo, state.floorMat);
   worldFloor.rotation.x = -Math.PI / 2;
   manager.scene.add(worldFloor);
@@ -451,6 +409,24 @@ export async function init(manager) {
     state.bgMusic = new Howl({ src: ['/assets/Así vive una persona con Esquizofrenia (8D Experiencia) audio real (mp3cut.net).mp3'], loop: false, volume: 0.9 });
     state.bgMusic.play();
   } catch (e) { console.warn('dream6 bgMusic err', e); }
+
+  // Voz del Arconte: se reproduce a los 4 segundos de comenzado el sueño
+  state.voiceSound = new Howl({
+    src: ['/assets/ElevenLabs_2026-06-15T16_59_19_Arconte - Evocative, Deep and Elegant_pvc_sp100_s50_sb75_v3.mp3'],
+    loop: false,
+    volume: 1.0,
+    onloaderror: (_id, err) => console.error('[dream6] voice load error:', err),
+  });
+  state.voiceTimeout = setTimeout(() => {
+    if (state.voiceSound) state.voiceSound.play();
+  }, 4000);
+
+  state.climaxSound = new Howl({
+    src: ['/assets/tension_riser_climax.mp3'],
+    loop: false,
+    volume: 1.2,
+    onloaderror: (_id, err) => console.error('[dream6] climax sound load error:', err),
+  });
 }
 
 function setupAudio() {
@@ -487,29 +463,6 @@ export function update(deltaTime, manager) {
   state.floorMat.uniforms.time.value = state.timeElapsed;
   state.wallsMat.uniforms.time.value = state.timeElapsed;
 
-  // --- Control de textos según posición del jugador ---
-  const pz = manager.camera.position.z;
-  
-  // Texto 1: visible al inicio, fade out cuando el jugador baja de Z=10
-  if (pz >= 10) {
-    state.text1.style.opacity = '1';
-    state.text2.style.opacity = '0';
-  } else if (pz >= 7) {
-    // Fade out texto 1, fade in texto 2 (entre Z=10 y Z=7)
-    const t = (10 - pz) / 3; // 0 en Z=10, 1 en Z=7
-    state.text1.style.opacity = String(1 - t);
-    state.text2.style.opacity = String(t);
-  } else if (pz >= 4) {
-    // Texto 2 visible, fade out al seguir avanzando
-    const t = (7 - pz) / 3; // 0 en Z=7, 1 en Z=4
-    state.text1.style.opacity = '0';
-    state.text2.style.opacity = String(1 - t);
-  } else {
-    // Ambos textos ocultos — el espejo queda visible
-    state.text1.style.opacity = '0';
-    state.text2.style.opacity = '0';
-  }
-
   if (state.climaxTriggered) {
     state.climaxTimer += deltaTime;
     
@@ -519,10 +472,6 @@ export function update(deltaTime, manager) {
     state.caEffect.offset.set(progress * 0.05, progress * 0.05);
     manager.fadeMaterial.opacity = progress;
 
-    if (state.sineOsc) {
-      state.sineOsc.frequency.value = 40 + progress * 60; // Sube hasta 100Hz
-      state.sineGain.gain.value = progress * 0.5;
-    }
 
     if (progress >= 1.0) {
       manager.transitionTo('hub_final');
@@ -574,8 +523,9 @@ export function update(deltaTime, manager) {
       }
     }
 
-    if (distance < 0.6) {
+    if (distance < 0.6 && !state.climaxTriggered) {
       state.climaxTriggered = true;
+      if (state.climaxSound) state.climaxSound.play();
     }
 
     // Fade out del audio externo durante la distorsión
@@ -631,6 +581,15 @@ export function dispose(manager) {
   if (state.bgMusic) {
     try { state.bgMusic.stop(); state.bgMusic.unload(); } catch (e) {}
     state.bgMusic = null;
+  }
+  clearTimeout(state.voiceTimeout);
+  if (state.voiceSound) {
+    try { state.voiceSound.stop(); state.voiceSound.unload(); } catch (e) {}
+    state.voiceSound = null;
+  }
+  if (state.climaxSound) {
+    try { state.climaxSound.stop(); state.climaxSound.unload(); } catch (e) {}
+    state.climaxSound = null;
   }
   if (state.audioCtx && state.audioCtx.state !== 'closed') {
     state.audioCtx.close();

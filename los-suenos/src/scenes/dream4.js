@@ -643,6 +643,10 @@ export function update(deltaTime, manager) {
   if (keys.a) manager.controls.moveRight(-speed);
   if (keys.d) manager.controls.moveRight(speed);
 
+  // Limitar al jugador dentro del área de pasto
+  manager.camera.position.x = THREE.MathUtils.clamp(manager.camera.position.x, -38, 38);
+  manager.camera.position.z = THREE.MathUtils.clamp(manager.camera.position.z, -128, 48);
+
   // Mantener al jugador en el terreno
   // La geometría del terreno mapea su eje Y al -Z global.
   const playerY = noise2D(manager.camera.position.x * 0.02, -manager.camera.position.z * 0.02) * 2.5 + noise2D(manager.camera.position.x * 0.08, -manager.camera.position.z * 0.08) * 0.5 - 1.0;
@@ -668,10 +672,10 @@ export function update(deltaTime, manager) {
     figure.haloSprite.scale.lerp(new THREE.Vector3(targetScale, targetScale, 1), deltaTime * 3);
   }
 
-  if (!isMoving && dist2D > 3) {
-    // Se acerca si no te mueves
-    figure.group.position.z += 1.5 * deltaTime;
-    // Mantenerla pegada al suelo mientras se mueve
+  if (dist2D > 3) {
+    const moveSpeed = 1.5 * deltaTime;
+    figure.group.position.x += (dx / dist2D) * moveSpeed;
+    figure.group.position.z += (dz / dist2D) * moveSpeed;
     figure.group.position.y = noise2D(figure.group.position.x * 0.02, -figure.group.position.z * 0.02) * 2.5 - 1.0;
   }
 

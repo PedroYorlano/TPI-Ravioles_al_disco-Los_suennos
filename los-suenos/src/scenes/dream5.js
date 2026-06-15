@@ -40,6 +40,7 @@ export async function init(manager) {
     climaxTimer: 0,
     velocity: new THREE.Vector3(),
     planets: [],
+    planetColliders: [],
     stars1: null,
     stars2: null,
     sky: null,
@@ -70,6 +71,7 @@ export async function init(manager) {
   createSky();
   createStars();
   await createPlanets();
+  createShootingStars();
 
   const ambient = new THREE.AmbientLight(0xffffff, 0.2);
   state.universeGroup.add(ambient);
@@ -149,7 +151,7 @@ function createSky() {
         float n2 = fbm(dir * 5.0 - time * 0.01);
         
         vec3 baseColor = mix(color3, color1, smoothstep(0.2, 0.7, n));
-        baseColor = mix(baseColor, color2, smoothstep(0.4, 0.9, n2));
+        baseColor = mix(baseColor, color2, smoothstep(0.4, 0.72, n2));
         
         // Manchas de negro profundo (cúmulos oscuros)
         float darkMask = smoothstep(0.4, 0.8, fbm(dir * 2.0));
@@ -243,6 +245,7 @@ async function addFloatingPlanetModel(fileName, position, speed, targetDiameter 
     const dummyMat = { uniforms: { time: { value: 0 }, collapse: { value: 0 } } };
     state.planets.push({ mesh: model, mat: dummyMat, speed });
     state.universeGroup.add(model);
+    state.planetColliders.push({ center: position.clone(), radius: targetDiameter / 2 });
   } catch (error) {
     console.warn(`No se pudo cargar ${fileName} en dream5`, error);
   }
@@ -281,22 +284,18 @@ const planetVertexShader = `
 `;
 
 async function createPlanets() {
-  // 1. Planeta Gaseoso (Bandas)
+  // ═══ PLANETAS PROCEDURALES (12 = 3× los 4 originales) ═══
+
+  // ── Gaseosos (3) ──
   const gasMat = new THREE.ShaderMaterial({
     uniforms: { time: { value: 0 }, collapse: { value: 0 } },
     vertexShader: planetVertexShader,
     fragmentShader: `
-      varying vec2 vUv;
-      varying vec3 vNormal;
-      uniform float time;
+      varying vec2 vUv; varying vec3 vNormal; uniform float time;
       void main() {
         float n = sin(vUv.y * 50.0 + sin(vUv.x * 10.0 + time) * 2.0);
-        vec3 color1 = vec3(0.8, 0.4, 0.1);
-        vec3 color2 = vec3(0.9, 0.7, 0.3);
-        vec3 color = mix(color1, color2, smoothstep(-0.5, 0.5, n));
-        
-        float intensity = dot(vNormal, vec3(0, 0, 1));
-        gl_FragColor = vec4(color * max(0.2, intensity), 1.0);
+        vec3 color = mix(vec3(0.8, 0.4, 0.1), vec3(0.72, 0.7, 0.3), smoothstep(-0.5, 0.5, n));
+        gl_FragColor = vec4(color * max(0.2, dot(vNormal, vec3(0,0,1))), 1.0);
       }
     `
   });
@@ -305,25 +304,57 @@ async function createPlanets() {
   state.planets.push({ mesh: gasPlanet, mat: gasMat, speed: 0.05 });
   state.universeGroup.add(gasPlanet);
 
-  // 2. Planeta Rocoso (Displacement procedural simulado)
-  const rockMat = new THREE.ShaderMaterial({
+  const gasMat2 = new THREE.ShaderMaterial({
     uniforms: { time: { value: 0 }, collapse: { value: 0 } },
     vertexShader: planetVertexShader,
     fragmentShader: `
-      varying vec2 vUv;
-      varying vec3 vNormal;
-      uniform float time;
-      float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-      float noise(vec2 p) {
-        vec2 i = floor(p); vec2 f = fract(p);
-        f = f*f*(3.0-2.0*f);
-        return mix(mix(hash(i), hash(i+vec2(1,0)), f.x), mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
-      }
+      varying vec2 vUv; varying vec3 vNormal; uniform float time;
       void main() {
-        float n = noise(vUv * 30.0) * 0.5 + noise(vUv * 100.0) * 0.25;
-        vec3 color = mix(vec3(0.2, 0.2, 0.25), vec3(0.5, 0.45, 0.4), n);
-        float intensity = dot(vNormal, vec3(0.5, 0.5, 1.0));
-        gl_FragColor = vec4(color * max(0.1, intensity), 1.0);
+        float n = sin(vUv.y * 40.0 + sin(vUv.x * 8.0 + time) * 2.0);
+        vec3 color = mix(vec3(0.5, 0.1, 0.7), vec3(0.8, 0.3, 0.72), smoothstep(-0.5, 0.5, n));
+        gl_FragColor = vec4(color * max(0.2, dot(vNormal, vec3(0,0,1))), 1.0);
+      }
+    `
+  });
+  const gasPlanet2 = new THREE.Mesh(new THREE.SphereGeometry(45, 32, 32), gasMat2);
+  gasPlanet2.position.set(-200, 350, -800);
+  state.planets.push({ mesh: gasPlanet2, mat: gasMat2, speed: 0.03 });
+  state.universeGroup.add(gasPlanet2);
+
+  const gasMat3 = new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 }, collapse: { value: 0 } },
+    vertexShader: planetVertexShader,
+    fragmentShader: `
+      varying vec2 vUv; varying vec3 vNormal; uniform float time;
+      void main() {
+        float n = sin(vUv.y * 60.0 + sin(vUv.x * 12.0 + time) * 1.5);
+        vec3 color = mix(vec3(0.6, 0.05, 0.05), vec3(0.72, 0.25, 0.1), smoothstep(-0.5, 0.5, n));
+        gl_FragColor = vec4(color * max(0.2, dot(vNormal, vec3(0,0,1))), 1.0);
+      }
+    `
+  });
+  const gasPlanet3 = new THREE.Mesh(new THREE.SphereGeometry(30, 32, 32), gasMat3);
+  gasPlanet3.position.set(550, -200, 750);
+  state.planets.push({ mesh: gasPlanet3, mat: gasMat3, speed: -0.07 });
+  state.universeGroup.add(gasPlanet3);
+
+  // ── Rocosos (3) ──
+  const rockFrag = `
+    varying vec2 vUv; varying vec3 vNormal; uniform float time;
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453); }
+    float noise(vec2 p) {
+      vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f);
+      return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
+    }`;
+
+  const rockMat = new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 }, collapse: { value: 0 } },
+    vertexShader: planetVertexShader,
+    fragmentShader: rockFrag + `
+      void main() {
+        float n = noise(vUv*30.0)*0.5 + noise(vUv*100.0)*0.25;
+        vec3 color = mix(vec3(0.2,0.2,0.25), vec3(0.5,0.45,0.4), n);
+        gl_FragColor = vec4(color * max(0.1, dot(vNormal, vec3(0.5,0.5,1.0))), 1.0);
       }
     `
   });
@@ -332,46 +363,78 @@ async function createPlanets() {
   state.planets.push({ mesh: rockPlanet, mat: rockMat, speed: -0.08 });
   state.universeGroup.add(rockPlanet);
 
-  // 3. Planeta con Anillos
-  const ringMat = new THREE.MeshStandardMaterial({ color: 0x2288ff, roughness: 0.6 });
-  const ringPlanet = new THREE.Mesh(new THREE.SphereGeometry(40, 64, 64), ringMat);
-
-  const ringGeo = new THREE.RingGeometry(55, 85, 64);
-  const ringTexMat = new THREE.MeshBasicMaterial({
-    color: 0x66ccff,
-    side: THREE.DoubleSide,
-    transparent: true,
-    opacity: 0.7
+  const rockMat2 = new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 }, collapse: { value: 0 } },
+    vertexShader: planetVertexShader,
+    fragmentShader: rockFrag + `
+      void main() {
+        float n = noise(vUv*30.0)*0.5 + noise(vUv*100.0)*0.25;
+        vec3 color = mix(vec3(0.45,0.2,0.1), vec3(0.7,0.4,0.2), n);
+        gl_FragColor = vec4(color * max(0.1, dot(vNormal, vec3(0.5,0.5,1.0))), 1.0);
+      }
+    `
   });
-  const ring = new THREE.Mesh(ringGeo, ringTexMat);
-  ring.rotation.x = Math.PI / 2.2;
-  ringPlanet.add(ring);
-  ringPlanet.position.set(-550, 200, -125);
+  const rockPlanet2 = new THREE.Mesh(new THREE.SphereGeometry(20, 32, 32), rockMat2);
+  rockPlanet2.position.set(-600, 100, -300);
+  state.planets.push({ mesh: rockPlanet2, mat: rockMat2, speed: 0.1 });
+  state.universeGroup.add(rockPlanet2);
 
-  // Dummy mat object to sync collapse uniform
-  const dummyMat = { uniforms: { time: { value: 0 }, collapse: { value: 0 } } };
-  state.planets.push({ mesh: ringPlanet, mat: dummyMat, speed: 0.05 });
-  state.universeGroup.add(ringPlanet);
+  const rockMat3 = new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 }, collapse: { value: 0 } },
+    vertexShader: planetVertexShader,
+    fragmentShader: rockFrag + `
+      void main() {
+        float n = noise(vUv*20.0)*0.5 + noise(vUv*60.0)*0.5;
+        float lava = step(0.82, noise(vUv*55.0 + time*0.05));
+        vec3 color = mix(vec3(0.05,0.04,0.04), vec3(0.25,0.1,0.12), n);
+        color += vec3(0.72,0.25,0.0) * lava;
+        gl_FragColor = vec4(color * max(0.15, dot(vNormal, vec3(0.5,0.5,1.0))), 1.0);
+      }
+    `
+  });
+  const rockPlanet3 = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 32), rockMat3);
+  rockPlanet3.position.set(250, -400, -550);
+  state.planets.push({ mesh: rockPlanet3, mat: rockMat3, speed: -0.04 });
+  state.universeGroup.add(rockPlanet3);
 
-  // 4. Planeta Helado (Nuevo)
+  // ── Con Anillos (3) ──
+  const mkRingPlanet = (color, ringColor, sphereR, rInner, rOuter, tiltDiv, pos, speed) => {
+    const planet = new THREE.Mesh(
+      new THREE.SphereGeometry(sphereR, 32, 32),
+      new THREE.MeshStandardMaterial({ color, roughness: 0.6 })
+    );
+    const ringMesh = new THREE.Mesh(
+      new THREE.RingGeometry(rInner, rOuter, 64),
+      new THREE.MeshBasicMaterial({ color: ringColor, side: THREE.DoubleSide, transparent: true, opacity: 0.68 })
+    );
+    ringMesh.rotation.x = Math.PI / tiltDiv;
+    planet.add(ringMesh);
+    planet.position.copy(pos);
+    const dummy = { uniforms: { time: { value: 0 }, collapse: { value: 0 } } };
+    state.planets.push({ mesh: planet, mat: dummy, speed });
+    state.universeGroup.add(planet);
+  };
+  mkRingPlanet(0x2288ff, 0x66ccff, 40, 55, 85, 2.2, new THREE.Vector3(-550, 200, -125), 0.05);
+  mkRingPlanet(0xff6622, 0xffcc44, 35, 50, 80, 2.5, new THREE.Vector3(600, 300, 200), -0.07);
+  mkRingPlanet(0x22ccaa, 0xeeeeff, 50, 65, 95, 2.8, new THREE.Vector3(-200, -300, 600), 0.08);
+
+  // ── Helados (3) ──
+  const iceFrag = `
+    varying vec2 vUv; varying vec3 vNormal; uniform float time;
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453); }
+    float noise(vec2 p) {
+      vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f);
+      return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
+    }`;
+
   const iceMat = new THREE.ShaderMaterial({
     uniforms: { time: { value: 0 }, collapse: { value: 0 } },
     vertexShader: planetVertexShader,
-    fragmentShader: `
-      varying vec2 vUv;
-      varying vec3 vNormal;
-      uniform float time;
-      float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-      float noise(vec2 p) {
-        vec2 i = floor(p); vec2 f = fract(p);
-        f = f*f*(3.0-2.0*f);
-        return mix(mix(hash(i), hash(i+vec2(1,0)), f.x), mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
-      }
+    fragmentShader: iceFrag + `
       void main() {
-        float n = noise(vUv * 40.0 + time * 0.05) * 0.5 + noise(vUv * 80.0) * 0.5;
-        vec3 color = mix(vec3(0.4, 0.7, 0.9), vec3(0.9, 0.95, 1.0), n);
-        float intensity = dot(vNormal, vec3(0.2, 0.8, 0.5));
-        gl_FragColor = vec4(color * max(0.1, intensity + 0.2), 1.0);
+        float n = noise(vUv*40.0+time*0.05)*0.5 + noise(vUv*80.0)*0.5;
+        vec3 color = mix(vec3(0.4,0.7,0.72), vec3(0.72,0.725,1.0), n);
+        gl_FragColor = vec4(color * max(0.1, dot(vNormal,vec3(0.2,0.8,0.5))+0.2), 1.0);
       }
     `
   });
@@ -380,28 +443,114 @@ async function createPlanets() {
   state.planets.push({ mesh: icePlanet, mat: iceMat, speed: 0.12 });
   state.universeGroup.add(icePlanet);
 
-  // Planetas GLB: distancias x2.5 para separación dramática
+  const iceMat2 = new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 }, collapse: { value: 0 } },
+    vertexShader: planetVertexShader,
+    fragmentShader: iceFrag + `
+      void main() {
+        float n = noise(vUv*40.0+time*0.03)*0.5 + noise(vUv*90.0)*0.5;
+        vec3 color = mix(vec3(0.05,0.1,0.45), vec3(0.2,0.4,0.85), n);
+        gl_FragColor = vec4(color * max(0.1, dot(vNormal,vec3(0.2,0.8,0.5))+0.2), 1.0);
+      }
+    `
+  });
+  const icePlanet2 = new THREE.Mesh(new THREE.SphereGeometry(25, 32, 32), iceMat2);
+  icePlanet2.position.set(700, 150, -400);
+  state.planets.push({ mesh: icePlanet2, mat: iceMat2, speed: -0.05 });
+  state.universeGroup.add(icePlanet2);
+
+  const iceMat3 = new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 }, collapse: { value: 0 } },
+    vertexShader: planetVertexShader,
+    fragmentShader: iceFrag + `
+      void main() {
+        float n = noise(vUv*35.0+time*0.04)*0.5 + noise(vUv*70.0)*0.5;
+        vec3 color = mix(vec3(0.1,0.3,0.2), vec3(0.3,0.8,0.5), n);
+        gl_FragColor = vec4(color * max(0.1, dot(vNormal,vec3(0.2,0.8,0.5))+0.15), 1.0);
+      }
+    `
+  });
+  const icePlanet3 = new THREE.Mesh(new THREE.SphereGeometry(55, 32, 32), iceMat3);
+  icePlanet3.position.set(-500, -100, -500);
+  state.planets.push({ mesh: icePlanet3, mat: iceMat3, speed: 0.09 });
+  state.universeGroup.add(icePlanet3);
+
+  // ═══ PLANETAS GLB (48 = 3× los 16 originales) ═══
   await Promise.all([
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(1050, 350, 150), 0.045, 120),
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(-1300, -300, -650), -0.03, 85),
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(550, 650, -1050), 0.06, 150),
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(-400, 200, 1300), 0.09, 65),
+    // Saturn ×12
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3( 1050,  350,   150), 0.045, 120),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(-1300, -300,  -650), -0.03,  85),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(  550,  650, -1050),  0.06, 150),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3( -400,  200,  1300),  0.09,  65),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3( -750,  200,  -400),  0.05,  90),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(  900, -450,   650), -0.04, 110),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3( -250, -650,   450),  0.07,  75),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3( 1150,  100,   750),  0.03, 140),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(-1050,  500,  -200), -0.05,  60),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(  300,  750, -1150),  0.06, 100),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3( -850, -550,   900),  0.08, 130),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(  650, -250, -1450), -0.03,  80),
 
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(-900, -225, 650), -0.07, 95),
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(1350, 450, -450), 0.05, 130),
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(-550, 800, -1300), 0.04, 70),
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(300, -600, 1075), -0.08, 160),
+    // Purple ×12
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3( -900, -225,   650), -0.07,  95),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3( 1350,  450,  -450),  0.05, 130),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3( -550,  800, -1300),  0.04,  70),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(  300, -600,  1075), -0.08, 160),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(  600, -300,  -950),  0.06,  85),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(-1000,  200,   300), -0.05, 115),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(  400,  700,   800),  0.04,  65),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3( -300, -800,  -750), -0.09, 145),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3( 1100, -200, -1050),  0.03,  55),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3( -700,  600,   900),  0.07, 125),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(  800,  400,  -600), -0.06,  90),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(-1400, -100,   650),  0.04, 100),
 
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(800, 175, -700), 0.06, 100),
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(-1525, 100, 400), -0.05, 75),
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(650, -550, 1250), 0.07, 140),
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(-450, 525, -1150), 0.03, 60),
+    // Earth ×12
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(  800,  175,  -700),  0.06, 100),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(-1525,  100,   400), -0.05,  75),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(  650, -550,  1250),  0.07, 140),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3( -450,  525, -1150),  0.03,  60),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3( -900,  300,  -500), -0.06,  80),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(  500, -600,   950),  0.08, 110),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3( -300,  700,   600), -0.04,  70),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3( 1100, -100,  -800),  0.05, 130),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3( -600, -400,  1100),  0.09,  95),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(  700,  500,   300), -0.05, 145),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(-1300,  200,  -400),  0.04,  60),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(  400, -300, -1350), -0.07,  55),
 
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(-650, 275, -850), 0.09, 72),
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(1450, -375, 550), -0.06, 55),
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(-1050, 650, 950), 0.08, 105),
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(450, -750, -1400), -0.04, 42)
+    // Mercury ×12
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3( -650,  275,  -850),  0.09,  72),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3( 1450, -375,   550), -0.06,  55),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(-1050,  650,   950),  0.08, 105),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(  450, -750, -1400), -0.04,  42),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(  900, -500,  -300),  0.07,  65),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3( -400,  600,  -700), -0.08,  85),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(  600,  200,  1150),  0.05,  48),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3( -800, -300,   500),  0.10, 100),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3( 1300,  400,  -350), -0.06,  55),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3( -200, -700,   800),  0.09, 115),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(  500,  600, -1100), -0.05,  75),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(-1150,  100,   300),  0.07,  40),
   ]);
+
+  // Colisionadores de planetas procedurales (posición y radio de la esfera)
+  [
+    { p: [ 300,  100, -625], r: 60 }, // gas 1
+    { p: [-200,  350, -800], r: 45 }, // gas 2
+    { p: [ 550, -200,  750], r: 30 }, // gas 3
+    { p: [-375, -150,  500], r: 25 }, // roca 1
+    { p: [-600,  100, -300], r: 20 }, // roca 2
+    { p: [ 250, -400, -550], r: 50 }, // roca 3
+    { p: [-550,  200, -125], r: 40 }, // anillos 1
+    { p: [ 600,  300,  200], r: 35 }, // anillos 2
+    { p: [-200, -300,  600], r: 50 }, // anillos 3
+    { p: [ 450, -250,  375], r: 35 }, // hielo 1
+    { p: [ 700,  150, -400], r: 25 }, // hielo 2
+    { p: [-500, -100, -500], r: 55 }, // hielo 3
+  ].forEach(({ p, r }) =>
+    state.planetColliders.push({ center: new THREE.Vector3(...p), radius: r })
+  );
 }
 
 function setupPostprocessing(manager) {
@@ -453,19 +602,7 @@ function setupAudio() {
 
         // Gain del riser
         state.riserGain = ctx.createGain();
-        state.riserGain.gain.value = 0.9;
-
-        // Ruido blanco (empieza mudo)
-        const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
-        const noiseData = noiseBuffer.getChannelData(0);
-        for (let i = 0; i < noiseData.length; i++) noiseData[i] = Math.random() * 2 - 1;
-        state.noiseSource = ctx.createBufferSource();
-        state.noiseSource.buffer = noiseBuffer;
-        state.noiseSource.loop = true;
-        state.noiseGain = ctx.createGain();
-        state.noiseGain.gain.value = 0;
-        state.noiseSource.connect(state.noiseGain).connect(ctx.destination);
-        state.noiseSource.start();
+        state.riserGain.gain.value = 0.72;
 
         // Cadena pre-armada: distortion → harshFilter → gain → destination
         state.distortion.connect(state.harshFilter)
@@ -497,11 +634,11 @@ function setupAudio() {
           source.connect(state.distortion); // Entra en la cadena ya conectada
           state.riserSource = source;
         } catch (e) {
-          riser.volume = 0.9;
+          riser.volume = 0.72;
           console.warn('WebAudio falló para el riser, usando volumen nativo', e);
         }
       } else {
-        riser.volume = 0.9;
+        riser.volume = 0.72;
       }
 
       riser.addEventListener('timeupdate', () => {
@@ -559,6 +696,61 @@ function setupAudio() {
   }
 }
 
+function createShootingStars() {
+  const COUNT = 100;
+  const DREAM_DURATION = 180; // segundos estimados de duración del sueño
+
+  const positions = new Float32Array(COUNT * 6);
+  const colors    = new Float32Array(COUNT * 6);
+  const data = [];
+
+  for (let i = 0; i < COUNT; i++) {
+    // Dirección aleatoria normalizada
+    let dx = Math.random() - 0.5;
+    let dy = Math.random() - 0.5;
+    let dz = Math.random() - 0.5;
+    const dl = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
+    dx /= dl; dy /= dl; dz /= dl;
+
+    // Posición de origen distribuida por el volumen
+    const ox = (Math.random() - 0.5) * 1600;
+    const oy = (Math.random() - 0.5) * 1600;
+    const oz = (Math.random() - 0.5) * 1600;
+
+    const speed    = 100 + Math.random() * 250;  // 100–350 u/s
+    const tail     =  20 + Math.random() * 80;   // 20–100 u
+    const duration =   2 + Math.random() * 5;    // activa 2–7 s
+
+    // Distribuidas uniformemente a lo largo del sueño con leve ruido
+    const spawnTime = (i / COUNT) * DREAM_DURATION + (Math.random() - 0.5) * (DREAM_DURATION / COUNT);
+
+    // Tinte sutil de cabeza: blanco frío o cálido
+    const r = 0.85 + Math.random() * 0.15;
+    const g = 0.85 + Math.random() * 0.15;
+    const b = 0.720 + Math.random() * 0.10;
+
+    data.push({ ox, oy, oz, dx, dy, dz, speed, tail, duration, spawnTime, r, g, b });
+
+    // Comienzan invisibles
+    for (let j = 0; j < 6; j++) { positions[i*6+j] = 0; colors[i*6+j] = 0; }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color',    new THREE.BufferAttribute(colors,    3));
+
+  const mat = new THREE.LineBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+
+  const lines = new THREE.LineSegments(geo, mat);
+  state.universeGroup.add(lines);
+  state.shootingStars = { lines, data };
+}
+
 function makeDistortionCurve(amount) {
   const k = typeof amount === 'number' ? amount : 50;
   const n_samples = 44100;
@@ -603,7 +795,7 @@ export function update(deltaTime, manager) {
 
   // Inercia normal vs Inercia de colapso (pierde control)
   const friction = THREE.MathUtils.lerp(0.97, 0.995, state.collapseFactor);
-  const inputStrength = THREE.MathUtils.lerp(60.0, 2.0, state.collapseFactor);
+  const inputStrength = THREE.MathUtils.lerp(175.0, 2.0, state.collapseFactor);
 
   if (accel.lengthSq() > 0) {
     accel.normalize().multiplyScalar(inputStrength * deltaTime);
@@ -612,6 +804,30 @@ export function update(deltaTime, manager) {
 
   manager.camera.position.add(state.velocity.clone().multiplyScalar(deltaTime));
   state.velocity.multiplyScalar(friction);
+
+  // Colisión con planetas: empujar al jugador fuera de la esfera
+  for (const col of state.planetColliders) {
+    const dx = manager.camera.position.x - col.center.x;
+    const dy = manager.camera.position.y - col.center.y;
+    const dz = manager.camera.position.z - col.center.z;
+    const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+    const minDist = col.radius + 2;
+    if (dist > 0 && dist < minDist) {
+      const nx = dx / dist, ny = dy / dist, nz = dz / dist;
+      manager.camera.position.set(
+        col.center.x + nx * minDist,
+        col.center.y + ny * minDist,
+        col.center.z + nz * minDist
+      );
+      // Cancelar componente de velocidad que entra al planeta
+      const vDotN = state.velocity.x*nx + state.velocity.y*ny + state.velocity.z*nz;
+      if (vDotN < 0) {
+        state.velocity.x -= vDotN * nx;
+        state.velocity.y -= vDotN * ny;
+        state.velocity.z -= vDotN * nz;
+      }
+    }
+  }
 
   // 2. Actualizar Shaders (Tiempo y Colapso)
   if (materials.sky) {
@@ -635,6 +851,39 @@ export function update(deltaTime, manager) {
     }
   });
 
+  // Estrellas fugaces: cada una activa solo durante su ventana de tiempo
+  if (state.shootingStars) {
+    const { lines, data } = state.shootingStars;
+    const pos = lines.geometry.attributes.position.array;
+    const col = lines.geometry.attributes.color.array;
+
+    for (let i = 0; i < data.length; i++) {
+      const s = data[i];
+      const t = state.timeElapsed - s.spawnTime; // tiempo desde que nació
+
+      if (t < 0 || t > s.duration) {
+        // Fuera de ventana: invisible (negro = transparente en AdditiveBlending)
+        col[i*6]=0; col[i*6+1]=0; col[i*6+2]=0;
+        col[i*6+3]=0; col[i*6+4]=0; col[i*6+5]=0;
+      } else {
+        // Dentro de ventana: mover y aplicar fade suave
+        const px = s.ox + s.dx * s.speed * t;
+        const py = s.oy + s.dy * s.speed * t;
+        const pz = s.oz + s.dz * s.speed * t;
+
+        const fade = Math.sin((t / s.duration) * Math.PI); // 0→1→0
+        col[i*6]  = s.r*fade; col[i*6+1] = s.g*fade; col[i*6+2] = s.b*fade;
+        col[i*6+3]= 0;        col[i*6+4] = 0;         col[i*6+5] = 0;
+
+        pos[i*6]   = px;            pos[i*6+1] = py;            pos[i*6+2] = pz;
+        pos[i*6+3] = px-s.dx*s.tail; pos[i*6+4] = py-s.dy*s.tail; pos[i*6+5] = pz-s.dz*s.tail;
+      }
+    }
+
+    lines.geometry.attributes.position.needsUpdate = true;
+    lines.geometry.attributes.color.needsUpdate = true;
+  }
+
   // 3. Blur final / colapso visual y sonoro sincronizado con el riser
   if (state.collapseStarted) {
     effects.noise.blendMode.opacity.value = state.collapseFactor * 0.5;
@@ -652,11 +901,6 @@ export function update(deltaTime, manager) {
       const shelfGain = Math.max(0, (state.collapseFactor - 0.6) / 0.4) * 25;
       state.harshFilter.gain.value = shelfGain;
     }
-    // Ruido blanco: sube en el último 50% del riser
-    if (state.noiseGain) {
-      const noiseVol = Math.max(0, (state.collapseFactor - 0.5) / 0.5) * 0.35;
-      state.noiseGain.gain.value = noiseVol;
-    }
   }
 }
 
@@ -667,9 +911,6 @@ function triggerClimax(manager) {
   // Silencio total antes del negro
   if (state.riserGain && state.audioCtx) {
     state.riserGain.gain.linearRampToValueAtTime(0, state.audioCtx.currentTime + 0.15);
-  }
-  if (state.noiseGain && state.audioCtx) {
-    state.noiseGain.gain.linearRampToValueAtTime(0, state.audioCtx.currentTime + 0.15);
   }
 
   // Parálisis
@@ -700,6 +941,12 @@ export function dispose(manager) {
 
   const ui = document.getElementById('dream5-ui');
   if (ui) ui.remove();
+
+  if (state.shootingStars) {
+    state.shootingStars.lines.geometry.dispose();
+    state.shootingStars.lines.material.dispose();
+    state.shootingStars = null;
+  }
 
   // Restaurar el far plane original de la cámara
   if (state.originalFar) {
@@ -753,14 +1000,4 @@ export function dispose(manager) {
     state.harshFilter = null;
   }
 
-  if (state.noiseSource) {
-    try { state.noiseSource.stop(); } catch (e) { }
-    try { state.noiseSource.disconnect(); } catch (e) { }
-    state.noiseSource = null;
-  }
-
-  if (state.noiseGain) {
-    try { state.noiseGain.disconnect(); } catch (e) { }
-    state.noiseGain = null;
-  }
 }
