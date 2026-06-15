@@ -1,20 +1,13 @@
 import * as THREE from 'three';
+import { Howl } from 'howler';
 
 window.hubVisitCount = window.hubVisitCount || 0;
+
+const DREAM_SEQUENCE = ['dream1', 'dream2', 'dream3', 'dream4', 'dream5', 'dream6'];
 
 let state = {};
 let doorLight, moonlight;
 let audioCtx;
-let debugMenuRoot = null;
-
-const dreamOptions = [
-  { id: 'dream1', label: 'Sueno 1' },
-  { id: 'dream2', label: 'Sueno 2' },
-  { id: 'dream3', label: 'Sueno 3' },
-  { id: 'dream4', label: 'Sueno 4' },
-  { id: 'dream5', label: 'Sueno 5' },
-  { id: 'dream6', label: 'Sueno 6' }
-];
 
 let keys = { w: false, a: false, s: false, d: false };
 
@@ -32,114 +25,6 @@ const keyupListener = (e) => {
   if (e.key === 'd' || e.key === 'D') keys.d = false;
 };
 
-function setMenuVisibility(isVisible, manager) {
-  if (!debugMenuRoot) return;
-  debugMenuRoot.style.display = isVisible ? 'flex' : 'none';
-  if (isVisible) {
-    manager.controls.unlock();
-  }
-}
-
-function buildDebugDreamMenu(manager) {
-  if (debugMenuRoot) {
-    debugMenuRoot.remove();
-  }
-
-  const root = document.createElement('div');
-  root.id = 'hub-dream-debug-menu';
-  root.style.position = 'fixed';
-  root.style.inset = '0';
-  root.style.display = 'none';
-  root.style.alignItems = 'center';
-  root.style.justifyContent = 'center';
-  root.style.pointerEvents = 'none';
-  root.style.zIndex = '40';
-
-  const panel = document.createElement('div');
-  panel.style.width = 'min(520px, 84vw)';
-  panel.style.border = '1px solid rgba(255, 219, 161, 0.5)';
-  panel.style.background = 'linear-gradient(180deg, rgba(17, 11, 8, 0.96), rgba(8, 8, 11, 0.92))';
-  panel.style.boxShadow = '0 18px 45px rgba(0, 0, 0, 0.55), inset 0 0 35px rgba(255, 181, 112, 0.08)';
-  panel.style.padding = '26px 28px';
-  panel.style.color = '#f5e6d3';
-  panel.style.fontFamily = 'Georgia, Cambria, "Times New Roman", serif';
-  panel.style.pointerEvents = 'auto';
-
-  const title = document.createElement('h2');
-  title.textContent = 'A que sueno vamos?';
-  title.style.margin = '0 0 8px 0';
-  title.style.fontSize = '30px';
-  title.style.fontWeight = '600';
-  title.style.letterSpacing = '0.4px';
-
-  const subtitle = document.createElement('p');
-  subtitle.textContent = 'Menu de debug: elegi un sueno con click o usando teclas 1-5.';
-  subtitle.style.margin = '0 0 18px 0';
-  subtitle.style.fontSize = '14px';
-  subtitle.style.opacity = '0.85';
-
-  const list = document.createElement('div');
-  list.style.display = 'grid';
-  list.style.gridTemplateColumns = '1fr';
-  list.style.gap = '10px';
-
-  dreamOptions.forEach((dream, index) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = `${index + 1}. ${dream.label}`;
-    button.style.textAlign = 'left';
-    button.style.padding = '11px 12px';
-    button.style.border = '1px solid rgba(255, 190, 112, 0.38)';
-    button.style.background = 'rgba(255, 166, 77, 0.08)';
-    button.style.color = '#ffe7c4';
-    button.style.cursor = 'pointer';
-    button.style.fontFamily = 'inherit';
-    button.style.fontSize = '16px';
-
-    button.addEventListener('mouseenter', () => {
-      button.style.background = 'rgba(255, 188, 123, 0.2)';
-    });
-
-    button.addEventListener('mouseleave', () => {
-      button.style.background = 'rgba(255, 166, 77, 0.08)';
-    });
-
-    button.addEventListener('click', (event) => {
-      event.stopPropagation();
-      if (state.transitioning) return;
-      state.transitioning = true;
-      setMenuVisibility(false, manager);
-      manager.transitionTo(dream.id);
-    });
-
-    list.appendChild(button);
-  });
-
-  panel.appendChild(title);
-  panel.appendChild(subtitle);
-  panel.appendChild(list);
-  root.appendChild(panel);
-  document.body.appendChild(root);
-  debugMenuRoot = root;
-}
-
-function selectDreamByIndex(index, manager) {
-  if (!state.nearDoor || state.transitioning) return;
-  const dream = dreamOptions[index];
-  if (!dream) return;
-  state.transitioning = true;
-  setMenuVisibility(false, manager);
-  manager.transitionTo(dream.id);
-}
-
-function debugMenuKeydownListener(e) {
-  const key = e.key;
-  if (key >= '1' && key <= '6') {
-    const index = Number(key) - 1;
-    selectDreamByIndex(index, state.manager);
-  }
-}
-
 export async function init(manager) {
   window.addEventListener('keydown', keydownListener);
   window.addEventListener('keyup', keyupListener);
@@ -153,11 +38,19 @@ export async function init(manager) {
     transitioning: false,
     visit: visit,
     nearDoor: false,
-    manager
+    manager,
+    rainSound: null,
+    lightningLight: null,
+    lightningTimer: 2 + Math.random() * 4,
+    lightningFlash: false,
+    lightningFlashTime: 0,
+    lightningPeak: 12,
+    rainGeo: null,
+    rainMesh: null,
+    music: null,
+    doorPrompt: null,
+    eKeyListener: null,
   };
-
-  buildDebugDreamMenu(manager);
-  window.addEventListener('keydown', debugMenuKeydownListener);
 
   // Cámara inicial (ajustada según la visita para evitar colisiones)
   if (visit === 1) {
@@ -899,6 +792,80 @@ export async function init(manager) {
 
   // AUDIO
   audioCtx = null;
+
+  // Música de fondo según visita
+  const musicSrc = visit <= 4
+    ? '/assets/Musica 1.mp3'
+    : '/assets/Musica 2.mp3';
+  state.music = new Howl({ src: [musicSrc], loop: true, volume: 0.6 });
+  state.music.play();
+
+  // Prompt de puerta
+  const doorPrompt = document.createElement('div');
+  doorPrompt.style.cssText = [
+    'position:fixed',
+    'bottom:52px',
+    'left:50%',
+    'transform:translateX(-50%)',
+    'color:rgba(255,255,255,0.75)',
+    'font-family:Georgia,serif',
+    'font-size:13px',
+    'letter-spacing:4px',
+    'opacity:0',
+    'transition:opacity 0.6s ease',
+    'pointer-events:none',
+    'z-index:100',
+    'text-shadow:0 0 12px rgba(0,0,0,0.9)',
+  ].join(';');
+  doorPrompt.textContent = 'PRESIONA E PARA CONTINUAR';
+  document.body.appendChild(doorPrompt);
+  state.doorPrompt = doorPrompt;
+
+  // Listener de tecla E para entrar por la puerta
+  const eKeyListener = (e) => {
+    if ((e.key === 'e' || e.key === 'E') && state.nearDoor && !state.transitioning) {
+      state.transitioning = true;
+      const next = DREAM_SEQUENCE[state.visit - 1] || 'hub_final';
+      manager.transitionTo(next);
+    }
+  };
+  window.addEventListener('keydown', eKeyListener);
+  state.eKeyListener = eKeyListener;
+
+  // Sonido de lluvia en loop (se detiene al interactuar con la puerta)
+  state.rainSound = new Howl({
+    src: ['/assets/repite_los_primeros_segundos.mp3'],
+    loop: true,
+    volume: 0.21,
+    rate: 0.9,
+  });
+  state.rainSound.play();
+
+  // Luz de relámpagos — posicionada dentro de la habitación cerca de la ventana
+  // para que al flashear ilumine el interior como si el rayo entrara por el vidrio
+  const lightningLight = new THREE.PointLight(0xb8d0ff, 0, 22);
+  lightningLight.position.set(-2.1, 2.2, 0);
+  manager.scene.add(lightningLight);
+  state.lightningLight = lightningLight;
+
+  // Partículas de lluvia (líneas cortas cayendo en el exterior de la ventana)
+  const rainCount = 400;
+  const rainPos = new Float32Array(rainCount * 6);
+  for (let i = 0; i < rainCount; i++) {
+    const x = -2.5 - Math.random() * 28;
+    const y = Math.random() * 14;
+    const z = (Math.random() - 0.5) * 22;
+    const dropLen = 0.07 + Math.random() * 0.13;
+    rainPos[i * 6]     = x; rainPos[i * 6 + 1] = y;           rainPos[i * 6 + 2] = z;
+    rainPos[i * 6 + 3] = x; rainPos[i * 6 + 4] = y - dropLen; rainPos[i * 6 + 5] = z;
+  }
+  const rainGeo = new THREE.BufferGeometry();
+  rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+  const rainMat = new THREE.LineBasicMaterial({ color: 0x88aadd, transparent: true, opacity: 0.35 });
+  const rainMesh = new THREE.LineSegments(rainGeo, rainMat);
+  manager.scene.add(rainMesh);
+  state.rainGeo = rainGeo;
+  state.rainMesh = rainMesh;
 }
 
 function playHubFootstepSound() {
@@ -1000,6 +967,52 @@ export function update(deltaTime, manager) {
     manager.camera.rotation.z = THREE.MathUtils.degToRad(3);
   }
 
+  // Relámpagos aleatorios con intensidad variable por destello
+  if (state.lightningLight) {
+    state.lightningTimer -= deltaTime;
+    if (state.lightningTimer <= 0) {
+      state.lightningFlash = true;
+      state.lightningFlashTime = 0;
+      state.lightningTimer = 3 + Math.random() * 8;
+      // Intensidad pico aleatoria: entre 8 y 20
+      state.lightningPeak = 8 + Math.random() * 12;
+    }
+    if (state.lightningFlash) {
+      const t = (state.lightningFlashTime += deltaTime);
+      const pk = state.lightningPeak;
+      if (t < 0.04) {
+        state.lightningLight.intensity = (t / 0.04) * pk;
+      } else if (t < 0.12) {
+        state.lightningLight.intensity = ((0.12 - t) / 0.08) * pk;
+      } else if (t < 0.17) {
+        state.lightningLight.intensity = ((t - 0.12) / 0.05) * (pk * 0.5);
+      } else if (t < 0.28) {
+        state.lightningLight.intensity = ((0.28 - t) / 0.11) * (pk * 0.5);
+      } else {
+        state.lightningLight.intensity = 0;
+        state.lightningFlash = false;
+      }
+    }
+  }
+
+  // Lluvia cayendo
+  if (state.rainGeo) {
+    const pos = state.rainGeo.attributes.position.array;
+    const count = pos.length / 6;
+    const fallSpeed = 6 * deltaTime;
+    for (let i = 0; i < count; i++) {
+      pos[i * 6 + 1] -= fallSpeed;
+      pos[i * 6 + 4] -= fallSpeed;
+      if (pos[i * 6 + 4] < -2) {
+        const newY = 10 + Math.random() * 4;
+        const dropLen = pos[i * 6 + 1] - pos[i * 6 + 4];
+        pos[i * 6 + 1] = newY;
+        pos[i * 6 + 4] = newY - dropLen;
+      }
+    }
+    state.rainGeo.attributes.position.needsUpdate = true;
+  }
+
   if (state.transitioning) return;
 
   const speed = 1.8 * deltaTime; // Movimiento lento en el hub
@@ -1069,25 +1082,49 @@ export function update(deltaTime, manager) {
     state.lastStepTime = state.timeElapsed;
   }
 
-  // Debug: al acercarte a la puerta se abre el selector de suenos.
+  // Detección de proximidad a la puerta
   const doorPos = new THREE.Vector3(0, 1.6, -2);
   const nearDoor = manager.camera.position.distanceTo(doorPos) < 0.92;
   if (nearDoor !== state.nearDoor) {
     state.nearDoor = nearDoor;
-    setMenuVisibility(nearDoor && !state.transitioning, manager);
+    if (state.doorPrompt) {
+      state.doorPrompt.style.opacity = nearDoor && !state.transitioning ? '1' : '0';
+    }
   }
 }
 
 export function dispose(manager) {
   window.removeEventListener('keydown', keydownListener);
   window.removeEventListener('keyup', keyupListener);
-  window.removeEventListener('keydown', debugMenuKeydownListener);
-  if (debugMenuRoot) {
-    debugMenuRoot.remove();
-    debugMenuRoot = null;
+  if (state.eKeyListener) {
+    window.removeEventListener('keydown', state.eKeyListener);
+    state.eKeyListener = null;
+  }
+  if (state.doorPrompt) {
+    state.doorPrompt.remove();
+    state.doorPrompt = null;
+  }
+  if (state.music) {
+    try { state.music.stop(); state.music.unload(); } catch (e) {}
+    state.music = null;
   }
   if (audioCtx && audioCtx.state !== 'closed') {
     audioCtx.close();
+  }
+  if (state.rainSound) {
+    try { state.rainSound.stop(); state.rainSound.unload(); } catch (e) {}
+    state.rainSound = null;
+  }
+  if (state.lightningLight) {
+    state.lightningLight.removeFromParent();
+    state.lightningLight = null;
+  }
+  if (state.rainMesh) {
+    state.rainGeo.dispose();
+    state.rainMesh.material.dispose();
+    state.rainMesh.removeFromParent();
+    state.rainMesh = null;
+    state.rainGeo = null;
   }
 
   if (state.exteriorGroup) {
