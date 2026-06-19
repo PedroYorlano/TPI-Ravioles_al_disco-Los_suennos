@@ -4,6 +4,9 @@ let state = {
 };
 
 export async function init(manager) {
+  // Iniciar la precarga en segundo plano
+  manager.preloadAllBackground();
+
   manager.controls.enabled = false;
   manager.controls.unlock();
 

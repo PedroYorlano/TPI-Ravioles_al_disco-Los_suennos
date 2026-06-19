@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { createNoise2D } from 'simplex-noise';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import {
   EffectComposer,
   RenderPass,
@@ -332,17 +331,11 @@ async function createFigure(manager) {
   figure.group = new THREE.Group();
   figure.group.position.set(0, 0, -state.figureDistance);
 
-  // Cargar modelo GLB con DRACOLoader
-  const dracoLoader = new DRACOLoader();
-  dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
-  const loader = new GLTFLoader();
-  loader.setDRACOLoader(dracoLoader);
-
   let model;
   try {
     const modelUrl = new URL('../assets/models/Copilot3D-1f9e01da-72de-4614-9f74-cafe446d987d.glb', import.meta.url).href;
-    const gltf = await loader.loadAsync(modelUrl);
-    model = gltf.scene;
+    const gltf = await manager.getModel(modelUrl);
+    model = SkeletonUtils.clone(gltf.scene);
 
     model.traverse(child => {
       if (child.isMesh) {
@@ -776,16 +769,6 @@ export function dispose(manager) {
   }
 
   if (figure.model) {
-    figure.model.traverse(child => {
-      if (child.isMesh) {
-        child.geometry.dispose();
-        if (Array.isArray(child.material)) {
-          child.material.forEach(mat => mat.dispose());
-        } else {
-          child.material.dispose();
-        }
-      }
-    });
     if (figure.model.parent) {
       figure.model.parent.remove(figure.model);
     }

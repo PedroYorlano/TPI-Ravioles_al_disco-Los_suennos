@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 
 export class SceneManager {
   constructor() {
@@ -44,6 +46,13 @@ export class SceneManager {
     // Diccionario de escenas registradas
     this.scenes = {};
 
+    // Inicializar cargadores compartidos para optimizar memoria y descargas
+    this.modelCache = {};
+    this.dracoLoader = new DRACOLoader();
+    this.dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+    this.gltfLoader = new GLTFLoader();
+    this.gltfLoader.setDRACOLoader(this.dracoLoader);
+
     window.addEventListener('resize', this.onWindowResize.bind(this));
 
     this.loop = this.loop.bind(this);
@@ -52,6 +61,43 @@ export class SceneManager {
 
   registerScene(name, moduleLoader) {
     this.scenes[name] = moduleLoader;
+  }
+
+  async getModel(url) {
+    if (this.modelCache[url]) {
+      return this.modelCache[url];
+    }
+
+    const promise = this.gltfLoader.loadAsync(url).catch(err => {
+      console.error(`[SceneManager] Error loading model ${url}:`, err);
+      delete this.modelCache[url];
+      throw err;
+    });
+
+    this.modelCache[url] = promise;
+    return promise;
+  }
+
+  preloadAllBackground() {
+    const models = [
+      new URL('./assets/models/mercury_planet.glb', import.meta.url).href,
+      new URL('./assets/models/planet_earth.glb', import.meta.url).href,
+      new URL('./assets/models/Copilot3D-1f9e01da-72de-4614-9f74-cafe446d987d.glb', import.meta.url).href,
+      new URL('./assets/models/purple_planet.glb', import.meta.url).href,
+      new URL('./assets/models/saturn_planet.glb', import.meta.url).href,
+      new URL('./assets/models/2284_donne_erwan_silhouette.glb', import.meta.url).href,
+      new URL('./assets/models/city.glb', import.meta.url).href,
+      new URL('./assets/models/bed.glb', import.meta.url).href
+    ];
+
+    console.log('[SceneManager] Starting background asset preloading...');
+    models.forEach(url => {
+      this.getModel(url).then(() => {
+        console.log(`[SceneManager] Preloaded asset: ${url.split('/').pop()}`);
+      }).catch(err => {
+        console.warn(`[SceneManager] Failed preloading: ${url}`, err);
+      });
+    });
   }
 
   onWindowResize() {
@@ -94,6 +140,17 @@ export class SceneManager {
       this.currentSceneModule = await loader();
       if (typeof this.currentSceneModule.init === 'function') {
         await this.currentSceneModule.init(this);
+      }
+
+      // Pre-compilar shaders de la nueva escena antes de quitar la pantalla negra
+      try {
+        if (typeof this.renderer.compileAsync === 'function') {
+          await this.renderer.compileAsync(this.scene, this.camera);
+        } else {
+          this.renderer.compile(this.scene, this.camera);
+        }
+      } catch (err) {
+        console.warn('[SceneManager] GPU compilation failed or skipped:', err);
       }
     } else {
       console.error(`SceneManager: Scene '${sceneName}' not found.`);

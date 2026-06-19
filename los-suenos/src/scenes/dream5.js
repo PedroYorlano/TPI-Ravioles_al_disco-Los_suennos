@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { createNoise2D } from 'simplex-noise';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   EffectComposer,
   RenderPass,
@@ -101,7 +100,7 @@ export async function init(manager) {
 }
 
 function createSky() {
-  const skyGeo = new THREE.SphereGeometry(1000, 64, 64);
+  const skyGeo = new THREE.SphereGeometry(1500, 64, 64);
   materials.sky = new THREE.ShaderMaterial({
     uniforms: {
       time: { value: 0 },
@@ -217,10 +216,10 @@ function createStars() {
 
 async function addFloatingPlanetModel(fileName, position, speed, targetDiameter = 80) {
   try {
-    const loader = new GLTFLoader();
     const modelUrl = new URL(`../assets/models/${fileName}`, import.meta.url).href;
-    const gltf = await loader.loadAsync(modelUrl);
-    const model = gltf.scene;
+    const gltf = await state.manager.getModel(modelUrl);
+    // Clonamos la escena para posicionarla y escalarla de forma independiente
+    const model = gltf.scene.clone();
 
     model.traverse((obj) => {
       if (obj.isMesh) {
@@ -478,75 +477,75 @@ async function createPlanets() {
   // ═══ PLANETAS GLB (48 = 3× los 16 originales) ═══
   await Promise.all([
     // Saturn ×12
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3( 1050,  350,   150), 0.045, 120),
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(-1300, -300,  -650), -0.03,  85),
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(  550,  650, -1050),  0.06, 150),
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3( -400,  200,  1300),  0.09,  65),
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3( -750,  200,  -400),  0.05,  90),
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(  900, -450,   650), -0.04, 110),
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3( -250, -650,   450),  0.07,  75),
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3( 1150,  100,   750),  0.03, 140),
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(-1050,  500,  -200), -0.05,  60),
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(  300,  750, -1150),  0.06, 100),
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3( -850, -550,   900),  0.08, 130),
-    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(  650, -250, -1450), -0.03,  80),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(1050, 350, 150), 0.045, 120),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(-1300, -300, -650), -0.03, 85),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(550, 650, -1050), 0.06, 150),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(-400, 200, 1300), 0.09, 65),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(-750, 200, -400), 0.05, 90),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(900, -450, 650), -0.04, 110),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(-250, -650, 450), 0.07, 75),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(1150, 100, 750), 0.03, 140),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(-1050, 500, -200), -0.05, 60),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(300, 750, -1150), 0.06, 100),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(-850, -550, 900), 0.08, 130),
+    addFloatingPlanetModel('saturn_planet.glb', new THREE.Vector3(650, -250, -1450), -0.03, 80),
 
     // Purple ×12
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3( -900, -225,   650), -0.07,  95),
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3( 1350,  450,  -450),  0.05, 130),
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3( -550,  800, -1300),  0.04,  70),
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(  300, -600,  1075), -0.08, 160),
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(  600, -300,  -950),  0.06,  85),
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(-1000,  200,   300), -0.05, 115),
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(  400,  700,   800),  0.04,  65),
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3( -300, -800,  -750), -0.09, 145),
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3( 1100, -200, -1050),  0.03,  55),
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3( -700,  600,   900),  0.07, 125),
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(  800,  400,  -600), -0.06,  90),
-    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(-1400, -100,   650),  0.04, 100),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(-900, -225, 650), -0.07, 95),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(1350, 450, -450), 0.05, 130),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(-550, 800, -1300), 0.04, 70),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(300, -600, 1075), -0.08, 160),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(600, -300, -950), 0.06, 85),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(-1000, 200, 300), -0.05, 115),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(400, 700, 800), 0.04, 65),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(-300, -800, -750), -0.09, 145),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(1100, -200, -1050), 0.03, 55),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(-700, 600, 900), 0.07, 125),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(800, 400, -600), -0.06, 90),
+    addFloatingPlanetModel('purple_planet.glb', new THREE.Vector3(-1400, -100, 650), 0.04, 100),
 
     // Earth ×12
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(  800,  175,  -700),  0.06, 100),
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(-1525,  100,   400), -0.05,  75),
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(  650, -550,  1250),  0.07, 140),
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3( -450,  525, -1150),  0.03,  60),
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3( -900,  300,  -500), -0.06,  80),
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(  500, -600,   950),  0.08, 110),
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3( -300,  700,   600), -0.04,  70),
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3( 1100, -100,  -800),  0.05, 130),
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3( -600, -400,  1100),  0.09,  95),
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(  700,  500,   300), -0.05, 145),
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(-1300,  200,  -400),  0.04,  60),
-    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(  400, -300, -1350), -0.07,  55),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(800, 175, -700), 0.06, 100),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(-1525, 100, 400), -0.05, 75),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(650, -550, 1250), 0.07, 140),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(-450, 525, -1150), 0.03, 60),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(-900, 300, -500), -0.06, 80),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(500, -600, 950), 0.08, 110),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(-300, 700, 600), -0.04, 70),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(1100, -100, -800), 0.05, 130),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(-600, -400, 1100), 0.09, 95),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(700, 500, 300), -0.05, 145),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(-1300, 200, -400), 0.04, 60),
+    addFloatingPlanetModel('planet_earth.glb', new THREE.Vector3(400, -300, -1350), -0.07, 55),
 
     // Mercury ×12
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3( -650,  275,  -850),  0.09,  72),
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3( 1450, -375,   550), -0.06,  55),
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(-1050,  650,   950),  0.08, 105),
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(  450, -750, -1400), -0.04,  42),
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(  900, -500,  -300),  0.07,  65),
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3( -400,  600,  -700), -0.08,  85),
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(  600,  200,  1150),  0.05,  48),
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3( -800, -300,   500),  0.10, 100),
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3( 1300,  400,  -350), -0.06,  55),
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3( -200, -700,   800),  0.09, 115),
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(  500,  600, -1100), -0.05,  75),
-    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(-1150,  100,   300),  0.07,  40),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(-650, 275, -850), 0.09, 72),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(1450, -375, 550), -0.06, 55),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(-1050, 650, 950), 0.08, 105),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(450, -750, -1400), -0.04, 42),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(900, -500, -300), 0.07, 65),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(-400, 600, -700), -0.08, 85),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(600, 200, 1150), 0.05, 48),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(-800, -300, 500), 0.10, 100),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(1300, 400, -350), -0.06, 55),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(-200, -700, 800), 0.09, 115),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(500, 600, -1100), -0.05, 75),
+    addFloatingPlanetModel('mercury_planet.glb', new THREE.Vector3(-1150, 100, 300), 0.07, 40),
   ]);
 
   // Colisionadores de planetas procedurales (posición y radio de la esfera)
   [
-    { p: [ 300,  100, -625], r: 60 }, // gas 1
-    { p: [-200,  350, -800], r: 45 }, // gas 2
-    { p: [ 550, -200,  750], r: 30 }, // gas 3
-    { p: [-375, -150,  500], r: 25 }, // roca 1
-    { p: [-600,  100, -300], r: 20 }, // roca 2
-    { p: [ 250, -400, -550], r: 50 }, // roca 3
-    { p: [-550,  200, -125], r: 40 }, // anillos 1
-    { p: [ 600,  300,  200], r: 35 }, // anillos 2
-    { p: [-200, -300,  600], r: 50 }, // anillos 3
-    { p: [ 450, -250,  375], r: 35 }, // hielo 1
-    { p: [ 700,  150, -400], r: 25 }, // hielo 2
+    { p: [300, 100, -625], r: 60 }, // gas 1
+    { p: [-200, 350, -800], r: 45 }, // gas 2
+    { p: [550, -200, 750], r: 30 }, // gas 3
+    { p: [-375, -150, 500], r: 25 }, // roca 1
+    { p: [-600, 100, -300], r: 20 }, // roca 2
+    { p: [250, -400, -550], r: 50 }, // roca 3
+    { p: [-550, 200, -125], r: 40 }, // anillos 1
+    { p: [600, 300, 200], r: 35 }, // anillos 2
+    { p: [-200, -300, 600], r: 50 }, // anillos 3
+    { p: [450, -250, 375], r: 35 }, // hielo 1
+    { p: [700, 150, -400], r: 25 }, // hielo 2
     { p: [-500, -100, -500], r: 55 }, // hielo 3
   ].forEach(({ p, r }) =>
     state.planetColliders.push({ center: new THREE.Vector3(...p), radius: r })
@@ -701,7 +700,7 @@ function createShootingStars() {
   const DREAM_DURATION = 180; // segundos estimados de duración del sueño
 
   const positions = new Float32Array(COUNT * 6);
-  const colors    = new Float32Array(COUNT * 6);
+  const colors = new Float32Array(COUNT * 6);
   const data = [];
 
   for (let i = 0; i < COUNT; i++) {
@@ -709,7 +708,7 @@ function createShootingStars() {
     let dx = Math.random() - 0.5;
     let dy = Math.random() - 0.5;
     let dz = Math.random() - 0.5;
-    const dl = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
+    const dl = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
     dx /= dl; dy /= dl; dz /= dl;
 
     // Posición de origen distribuida por el volumen
@@ -717,9 +716,9 @@ function createShootingStars() {
     const oy = (Math.random() - 0.5) * 1600;
     const oz = (Math.random() - 0.5) * 1600;
 
-    const speed    = 100 + Math.random() * 250;  // 100–350 u/s
-    const tail     =  20 + Math.random() * 80;   // 20–100 u
-    const duration =   2 + Math.random() * 5;    // activa 2–7 s
+    const speed = 100 + Math.random() * 250;  // 100–350 u/s
+    const tail = 20 + Math.random() * 80;   // 20–100 u
+    const duration = 2 + Math.random() * 5;    // activa 2–7 s
 
     // Distribuidas uniformemente a lo largo del sueño con leve ruido
     const spawnTime = (i / COUNT) * DREAM_DURATION + (Math.random() - 0.5) * (DREAM_DURATION / COUNT);
@@ -732,12 +731,12 @@ function createShootingStars() {
     data.push({ ox, oy, oz, dx, dy, dz, speed, tail, duration, spawnTime, r, g, b });
 
     // Comienzan invisibles
-    for (let j = 0; j < 6; j++) { positions[i*6+j] = 0; colors[i*6+j] = 0; }
+    for (let j = 0; j < 6; j++) { positions[i * 6 + j] = 0; colors[i * 6 + j] = 0; }
   }
 
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geo.setAttribute('color',    new THREE.BufferAttribute(colors,    3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
   const mat = new THREE.LineBasicMaterial({
     vertexColors: true,
@@ -810,7 +809,7 @@ export function update(deltaTime, manager) {
     const dx = manager.camera.position.x - col.center.x;
     const dy = manager.camera.position.y - col.center.y;
     const dz = manager.camera.position.z - col.center.z;
-    const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
     const minDist = col.radius + 2;
     if (dist > 0 && dist < minDist) {
       const nx = dx / dist, ny = dy / dist, nz = dz / dist;
@@ -820,7 +819,7 @@ export function update(deltaTime, manager) {
         col.center.z + nz * minDist
       );
       // Cancelar componente de velocidad que entra al planeta
-      const vDotN = state.velocity.x*nx + state.velocity.y*ny + state.velocity.z*nz;
+      const vDotN = state.velocity.x * nx + state.velocity.y * ny + state.velocity.z * nz;
       if (vDotN < 0) {
         state.velocity.x -= vDotN * nx;
         state.velocity.y -= vDotN * ny;
@@ -863,8 +862,8 @@ export function update(deltaTime, manager) {
 
       if (t < 0 || t > s.duration) {
         // Fuera de ventana: invisible (negro = transparente en AdditiveBlending)
-        col[i*6]=0; col[i*6+1]=0; col[i*6+2]=0;
-        col[i*6+3]=0; col[i*6+4]=0; col[i*6+5]=0;
+        col[i * 6] = 0; col[i * 6 + 1] = 0; col[i * 6 + 2] = 0;
+        col[i * 6 + 3] = 0; col[i * 6 + 4] = 0; col[i * 6 + 5] = 0;
       } else {
         // Dentro de ventana: mover y aplicar fade suave
         const px = s.ox + s.dx * s.speed * t;
@@ -872,11 +871,11 @@ export function update(deltaTime, manager) {
         const pz = s.oz + s.dz * s.speed * t;
 
         const fade = Math.sin((t / s.duration) * Math.PI); // 0→1→0
-        col[i*6]  = s.r*fade; col[i*6+1] = s.g*fade; col[i*6+2] = s.b*fade;
-        col[i*6+3]= 0;        col[i*6+4] = 0;         col[i*6+5] = 0;
+        col[i * 6] = s.r * fade; col[i * 6 + 1] = s.g * fade; col[i * 6 + 2] = s.b * fade;
+        col[i * 6 + 3] = 0; col[i * 6 + 4] = 0; col[i * 6 + 5] = 0;
 
-        pos[i*6]   = px;            pos[i*6+1] = py;            pos[i*6+2] = pz;
-        pos[i*6+3] = px-s.dx*s.tail; pos[i*6+4] = py-s.dy*s.tail; pos[i*6+5] = pz-s.dz*s.tail;
+        pos[i * 6] = px; pos[i * 6 + 1] = py; pos[i * 6 + 2] = pz;
+        pos[i * 6 + 3] = px - s.dx * s.tail; pos[i * 6 + 4] = py - s.dy * s.tail; pos[i * 6 + 5] = pz - s.dz * s.tail;
       }
     }
 

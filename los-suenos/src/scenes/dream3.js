@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { Howl } from 'howler';
 import { EffectComposer, RenderPass, EffectPass, DepthOfFieldEffect, VignetteEffect } from 'postprocessing';
 
@@ -133,7 +133,7 @@ export async function init(manager) {
   createMaterials();
 
   // Carga del monstruo en background: no bloquea el fade-in ni el DOF
-  startMonsterLoad(manager.scene);
+  startMonsterLoad(manager);
 
   // Audio
   sounds.hum = new Howl({ src: ['/assets/fluorescent_hum.wav'], loop: true, volume: 0.2 });
@@ -250,12 +250,11 @@ function playBreath() {
   source.start();
 }
 
-function startMonsterLoad(scene) {
-  const loader = new GLTFLoader();
+function startMonsterLoad(manager) {
   const modelUrl = new URL('../assets/models/2284_donne_erwan_silhouette.glb', import.meta.url).href;
 
-  loader.loadAsync(modelUrl).then(gltf => {
-    const model = gltf.scene;
+  manager.getModel(modelUrl).then(gltf => {
+    const model = SkeletonUtils.clone(gltf.scene);
 
     // Escalar a ~2 unidades de alto usando solo Y
     model.updateMatrixWorld(true);
@@ -280,7 +279,7 @@ function startMonsterLoad(scene) {
     const group = new THREE.Group();
     group.add(model);
     group.position.set(0, 0, 25); // detrás del jugador al inicio (cámara arranca en Z=0)
-    scene.add(group);
+    manager.scene.add(group);
 
     let mixer = null;
     let walkAction = null;
