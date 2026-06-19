@@ -3,6 +3,7 @@ import { Howl } from 'howler';
 
 let rainSound = null;
 let music = null;
+let restartTimeout = null;
 
 export async function init(manager) {
   manager.scene.background = new THREE.Color(0x000000);
@@ -46,6 +47,11 @@ export async function init(manager) {
     rate: 0.9,
   });
   rainSound.play();
+
+  // Mantener la outro 30s y volver automaticamente al menu inicial.
+  restartTimeout = setTimeout(() => {
+    manager.transitionTo('landing');
+  }, 30000);
 }
 
 export function update(deltaTime, manager) {
@@ -53,6 +59,10 @@ export function update(deltaTime, manager) {
 }
 
 export function dispose(manager) {
+  if (restartTimeout) {
+    clearTimeout(restartTimeout);
+    restartTimeout = null;
+  }
   const ui = document.getElementById('hub-final-ui');
   if (ui) ui.remove();
   if (rainSound) {
